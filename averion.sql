@@ -1779,11 +1779,11 @@ CREATE TABLE `settings` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 INSERT INTO `settings` (`setting_key`,`setting_value`,`setting_group`) VALUES
-('app_name','Averion','branding'),
+('app_name','Darmutiara Islamic','branding'),
 ('app_logo','','branding'),
 ('app_favicon','','branding'),
-('brand_color','#3b82f6','branding'),
-('brand_color_secondary','#60a5fa','branding'),
+('brand_color','#176650','branding'),
+('brand_color_secondary','#258468','branding'),
 ('dark_mode_default','0','appearance'),
 ('affiliate_commission_rate','35','affiliate'),
 ('affiliate_enabled','1','affiliate'),
@@ -1813,7 +1813,7 @@ INSERT INTO `settings` (`setting_key`,`setting_value`,`setting_group`) VALUES
 ('vendor_support_whatsapp','','license'),
 ('license_verified_once','0','license'),
 ('vendor_renew_url','','license'),
-('homepage_headline','Produk Averion','branding'),
+('homepage_headline','Darmutiara Islamic','branding'),
 ('homepage_subheadline','Kelas, membership, e-book, dan software premium','branding'),
 ('google_oauth_enabled','0','auth'),
 ('google_oauth_client_id','','auth'),

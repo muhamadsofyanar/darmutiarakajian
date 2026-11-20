@@ -73,7 +73,7 @@ generateCSRF();
                   <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-300 dark:text-gray-600">
                     <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 7a2 2 0 0 1 2 2m4 0a6 6 0 0 1-7.743 5.743L11 17H9v2H7v2H4a1 1 0 0 1-1-1v-2.586a1 1 0 0 1 .293-.707l5.964-5.964A6 6 0 1 1 21 9z"/></svg>
                   </span>
-                  <input type="text" name="license_key" required placeholder="XXXX-XXXX-XXXX-XXXX"
+                  <input type="text" name="license_key" required placeholder="DRM-…" maxlength="47"
                          value="<?= e($license['license_key'] ?? '') ?>"
                          class="w-full pl-10 pr-3.5 py-2.5 rounded-lg text-sm tracking-wider border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white font-mono placeholder-gray-300 dark:placeholder-gray-600 focus:ring-2 focus:ring-[var(--brand-color)] focus:border-transparent outline-none transition"
                          autocomplete="off" spellcheck="false">

@@ -57,7 +57,7 @@ if ($lockExists && !$configExists) {
         'File <code>config.php</code> tidak ditemukan padahal installer sudah pernah '
         . 'dijalankan sampai selesai. Instalasi kemungkinan rusak. Hapus '
         . '<code>installer/install.lock</code> untuk mengulang instalasi, atau hubungi support.',
-        '<a href="mailto:support@averion.id">Hubungi Support &rarr;</a>'
+        '<a href="https://darmutiara.com">Darmutiara &rarr;</a>'
     );
 }
 

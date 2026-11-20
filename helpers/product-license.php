@@ -142,25 +142,6 @@ function licenseApiRateLimitOk(int $maxPerMinute = 60): bool {
 }
 
 /**
- * Aktivasi lisensi Averion ke License Server, lalu simpan hasilnya ke
- * license_info. Satu sumber kebenaran yang dipakai oleh
- * actions/admin/activate-license.php DAN auto re-aktivasi di
- * actions/auth/login.php (hindari duplikasi HTTP call + simpan token).
- *
- * Membedakan tiga hasil:
- *  - network_error = true  → server tidak bisa dihubungi (pemanggil boleh
- *                            lanjut sebagai pending_activation). DB TIDAK diubah.
- *  - success = false (network_error false) → server merespons tapi MENOLAK key
- *                            (invalid/expired/domain lain). DB TIDAK diubah.
- *  - success = true        → tersimpan ke license_info (status sesuai payload,
- *                            signed_token + token_valid_until, pending_reason NULL).
- *
- * Verifikasi signature sesungguhnya terjadi saat enforcement (resolveLicenseState);
- * di sini token disimpan sebagai cache.
- *
- * @return array{success:bool,network_error:bool,message:string,status:?string}
- */
-/**
  * Sidik-jari instalasi (watermark) yang stabil per instalasi. Dibuat sekali &
  * disimpan di settings; dikirim ke server lisensi tiap activate/validate agar
  * copy yang dibajak/diklon (instance berbeda) bisa dibedakan & dilacak vendor.
@@ -180,154 +161,40 @@ function licenseInstanceId(): string
 }
 
 /**
- * POST JSON ke endpoint License Server via cURL (bukan file_get_contents/stream
- * wrapper). Banyak shared hosting mematikan `allow_url_fopen` demi keamanan —
- * saat itu terjadi, file_get_contents ke URL luar SELALU return false walau
- * cURL & koneksi outbound normal. Semua panggilan aktivasi/validasi lisensi
- * WAJIB lewat sini (bukan lagi stream_context_create) agar konsisten dengan
- * check-update/apply-update/vendor-fulfillment yang sudah pakai cURL.
- *
- * @return array{ok:bool,body:?string,error:string}
+ * Verifikasi lisensi instalasi Darmutiara dan simpan bukti yang valid.
+ * @return array{success:bool,network_error:bool,message:string,status:?string}
  */
-function licenseServerPost(string $path, array $payload, int $timeoutSec = 10): array
-{
-    $url = rtrim(LICENSE_SERVER_URL, '/') . '/' . ltrim($path, '/');
-
-    if (!function_exists('curl_init')) {
-        // Fallback defensif — ekstensi curl nyaris selalu ada di hosting PHP modern,
-        // tapi jangan sampai instalasi tanpa curl kehilangan aktivasi sama sekali.
-        $ctx = stream_context_create([
-            'http' => [
-                'method' => 'POST', 'header' => "Content-Type: application/json\r\nUser-Agent: Averion/1.0\r\n",
-                'content' => json_encode($payload), 'timeout' => $timeoutSec, 'ignore_errors' => true,
-            ],
-            'ssl' => ['verify_peer' => true, 'verify_peer_name' => true],
-        ]);
-        $result = @file_get_contents($url, false, $ctx);
-        return $result === false
-            ? ['ok' => false, 'body' => null, 'error' => 'Tidak dapat menghubungi server lisensi.']
-            : ['ok' => true, 'body' => $result, 'error' => ''];
-    }
-
-    $ch = curl_init($url);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_POST           => true,
-        CURLOPT_POSTFIELDS     => json_encode($payload),
-        CURLOPT_HTTPHEADER     => ['Content-Type: application/json', 'User-Agent: Averion/1.0'],
-        CURLOPT_TIMEOUT        => $timeoutSec,
-        CURLOPT_CONNECTTIMEOUT => min(10, $timeoutSec),
-        CURLOPT_SSL_VERIFYPEER => true,
-        CURLOPT_SSL_VERIFYHOST => 2,
-    ]);
-    $body     = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $curlErr  = curl_error($ch);
-    curl_close($ch);
-
-    if ($body === false) {
-        return ['ok' => false, 'body' => null, 'error' => 'Tidak dapat menghubungi server lisensi.' . ($curlErr !== '' ? " ($curlErr)" : '')];
-    }
-    // Endpoint license server selalu balas JSON meski gagal validasi (400/403 dgn
-    // {"success":false,"message":...}) — jadi body tetap diteruskan apa pun http code-nya,
-    // caller yang menafsirkan payload JSON-nya.
-    return ['ok' => true, 'body' => (string) $body, 'error' => ''];
-}
-
 function attemptLicenseActivation(string $licenseKey, string $domain): array
 {
-    $out = ['success' => false, 'network_error' => false, 'message' => '', 'status' => null];
-
-    $payload = [
-        'license_key' => $licenseKey,
-        'domain'      => $domain,
-        'instance_id' => licenseInstanceId(),
-        'app_version' => APP_VERSION,
-    ];
-    $req = licenseServerPost('activate', $payload);
-
-    // ── Kegagalan jaringan (server tak terjangkau) ──
-    if (!$req['ok']) {
-        $out['network_error'] = true;
-        $out['message'] = $req['error'] !== '' ? $req['error'] : 'Tidak dapat menghubungi server lisensi.';
-        return $out;
-    }
-    $result = $req['body'];
-
-    $decoded = json_decode($result, true);
-    if (json_last_error() !== JSON_ERROR_NONE || !is_array($decoded)) {
-        $out['message'] = 'Respons server lisensi tidak valid.';
-        return $out;
-    }
-
-    $signedToken = isset($decoded['signed_token']) ? (string) $decoded['signed_token'] : '';
-
-    // ── Server merespons tapi menolak (kegagalan VALIDASI, bukan jaringan) ──
-    if (empty($decoded['success']) || $signedToken === '') {
-        $out['message'] = (string) ($decoded['message'] ?? 'Aktivasi ditolak server lisensi. Periksa kembali license key.');
-        return $out;
-    }
-
-    // ── Sukses: decode payload token (cache; verifikasi saat enforcement) ──
-    $tokenPayload = null;
-    $tp = explode('.', $signedToken);
-    if (count($tp) === 3) {
-        $rawP = base64UrlDecode($tp[1]);
-        if ($rawP !== false) {
-            $d = json_decode($rawP, true);
-            if (is_array($d)) $tokenPayload = $d;
-        }
-    }
-
-    $planAllowed = ['monthly', 'quarterly', 'yearly', 'lifetime'];
-    $plan = $tokenPayload['plan'] ?? ($decoded['plan'] ?? null);
-    $plan = in_array($plan, $planAllowed, true) ? $plan : null;
-
-    $status = $tokenPayload['status'] ?? ($decoded['status'] ?? 'active');
-    if (!in_array($status, ['active', 'expired', 'suspended', 'unknown', 'pending_activation'], true)) {
-        $status = 'active';
-    }
-
-    $vu = $tokenPayload['valid_until'] ?? ($decoded['valid_until'] ?? null);
-    $tokenValidUntil = (!empty($vu) && strtotime((string) $vu) !== false) ? date('Y-m-d H:i:s', strtotime((string) $vu)) : null;
-
-    $ex = $tokenPayload['expires_at'] ?? ($decoded['expires_at'] ?? null);
-    $expiresAt = (!empty($ex) && strtotime((string) $ex) !== false) ? date('Y-m-d H:i:s', strtotime((string) $ex)) : null;
-
+    $result = requestDarmutiaraLicense($licenseKey, $domain);
+    $out = ['success' => false, 'network_error' => !empty($result['network_error']),
+        'message' => $result['error'] ?? '', 'status' => null];
     try {
-        $pdo = getDB();
-        $existingId = $pdo->query("SELECT id FROM license_info ORDER BY id ASC LIMIT 1")->fetchColumn();
-        if ($existingId) {
-            $pdo->prepare(
-                "UPDATE license_info SET
-                   license_key = ?, domain = ?, plan = ?, plan_effective = ?, status = ?,
-                   activation_pending_reason = NULL, activated_at = NOW(), expires_at = ?,
-                   last_checked_at = NOW(), signed_token = ?, token_valid_until = ?,
-                   raw_response = ?, updated_at = NOW()
-                 WHERE id = ?"
-            )->execute([
-                $licenseKey, $domain, $plan, $plan, $status,
-                $expiresAt, $signedToken, $tokenValidUntil, json_encode($decoded), $existingId,
-            ]);
-        } else {
-            $pdo->prepare(
-                "INSERT INTO license_info
-                   (license_key, domain, plan, plan_effective, status, activation_pending_reason,
-                    activated_at, expires_at, last_checked_at, signed_token, token_valid_until, raw_response)
-                 VALUES (?, ?, ?, ?, ?, NULL, NOW(), ?, NOW(), ?, ?, ?)"
-            )->execute([
-                $licenseKey, $domain, $plan, $plan, $status, $expiresAt, $signedToken, $tokenValidUntil, json_encode($decoded),
-            ]);
+        $db = getDB();
+        if (!empty($result['denied'])) {
+            $db->prepare("UPDATE license_info SET signed_token = NULL, token_valid_until = NULL,
+                status = 'expired', last_checked_at = NOW() WHERE BINARY license_key = ? AND domain = ?")
+                ->execute([$licenseKey, $domain]);
         }
-        setSetting('license_verified_once', '1', 'license');
-    } catch (Exception $e) {
-        error_log('attemptLicenseActivation save error: ' . $e->getMessage());
-        $out['message'] = 'Aktivasi berhasil diverifikasi tetapi gagal disimpan. Coba lagi.';
+        if (!isset($result['token'])) {
+            return $out;
+        }
+        $id = $db->query('SELECT id FROM license_info ORDER BY id ASC LIMIT 1')->fetchColumn();
+        if ($id !== false) {
+            $db->prepare("UPDATE license_info SET license_key = ?, domain = ?, signed_token = ?,
+                token_valid_until = FROM_UNIXTIME(?), status = 'active', activation_pending_reason = NULL,
+                plan = NULL, plan_effective = NULL, expires_at = NULL, raw_response = NULL,
+                last_checked_at = NOW(), activated_at = NOW() WHERE id = ?")
+                ->execute([$licenseKey, $domain, $result['token'], $result['exp'], $id]);
+        } else {
+            $db->prepare("INSERT INTO license_info (license_key, domain, signed_token, token_valid_until,
+                status, last_checked_at, activated_at) VALUES (?, ?, ?, FROM_UNIXTIME(?), 'active', NOW(), NOW())")
+                ->execute([$licenseKey, $domain, $result['token'], $result['exp']]);
+        }
+        return ['success' => true, 'network_error' => false, 'message' => 'Lisensi Darmutiara aktif.', 'status' => 'active'];
+    } catch (Throwable $error) {
+        error_log('[darmutiara-license] Gagal menyimpan status aktivasi.');
+        $out['message'] = 'Status aktivasi gagal disimpan. Coba lagi.';
         return $out;
     }
-
-    $out['success'] = true;
-    $out['status']  = $status;
-    $out['message'] = 'Lisensi berhasil diaktivasi.';
-    return $out;
 }

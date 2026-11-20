@@ -19,6 +19,11 @@ if (!function_exists('installer_required_checks')) {
 
         return [
             [
+                'label'  => 'Ekstensi Sodium',
+                'detail' => 'Verifikasi tanda tangan lisensi Darmutiara (Ed25519).',
+                'pass'   => extension_loaded('sodium'),
+            ],
+            [
                 'label'  => 'PHP versi 8.0+',
                 'detail' => '(Anda: PHP ' . PHP_VERSION . ')',
                 'pass'   => version_compare(PHP_VERSION, '8.0.0', '>='),
@@ -82,11 +87,6 @@ if (!function_exists('installer_recommended_checks')) {
     function installer_recommended_checks(): array
     {
         return [
-            [
-                'label'  => 'Ekstensi Sodium',
-                'detail' => 'Verifikasi kriptografi lisensi (Ed25519). Tanpa ini instalasi tetap bisa lanjut & aplikasi berjalan normal; aktifkan untuk proteksi lisensi penuh.',
-                'pass'   => extension_loaded('sodium'),
-            ],
             [
                 'label'  => 'Ekstensi GD',
                 'detail' => 'Dibutuhkan untuk fitur Certificate Generator',

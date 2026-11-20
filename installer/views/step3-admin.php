@@ -85,9 +85,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     (!empty($_SERVER['SERVER_PORT']) && (int) $_SERVER['SERVER_PORT'] === 443)
                 );
                 $scheme = $isHttps ? 'https' : 'http';
-                $appUrl = $scheme . '://' . $_SERVER['HTTP_HOST'] . $basePath;
+                $appUrl = getenv('DARMUTIARA_APP_URL') ?: ($scheme . '://' . $_SERVER['HTTP_HOST'] . $basePath);
 
                 $configContent = "<?php\n";
+                $configContent .= "define('DARMUTIARA_ROOT', " . var_export($appRoot, true) . ");\n";
                 $configContent .= "// ─── Database ─────────────────────────────────────────────────\n";
                 $configContent .= "define('DB_HOST', " . var_export($db['host'], true) . ");\n";
                 $configContent .= "define('DB_NAME', " . var_export($db['dbname'], true) . ");\n";
@@ -96,63 +97,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $configContent .= "define('DB_PORT', " . var_export($db['port'], true) . ");\n";
                 $configContent .= "\n";
                 $configContent .= "// ─── Aplikasi: APP_URL ────────────────────────────────────────\n";
-                // Tulis blok APP_URL portable: web auto-detect (aman pindah domain),
-                // CLI/cron pakai URL yang terdeteksi saat instalasi sebagai fallback.
-                $appUrlBlock = <<<'PHP'
-// Web AUTO-DETECT dari domain yang diakses (aman saat pindah domain). CLI/cron
-// pakai fallback di bawah. Isi $appUrlOverride untuk memaksa URL tetap.
-$appUrlOverride = ''; // contoh: 'https://domainkamu.com'
-if ($appUrlOverride !== '') {
-    define('APP_URL', rtrim($appUrlOverride, '/'));
-} elseif (PHP_SAPI === 'cli') {
-    define('APP_URL', __CLI_FALLBACK__); // fallback cron/CLI (sesuaikan jika pindah domain)
-} else {
-    $scheme = (
-           (!empty($_SERVER['HTTPS']) && strtolower($_SERVER['HTTPS']) !== 'off')
-        || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https')
-        || (($_SERVER['HTTP_X_FORWARDED_SSL'] ?? '') === 'on')
-        || (($_SERVER['SERVER_PORT'] ?? '') == 443)
-    ) ? 'https' : 'http';
-    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-    $base = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '')), '/');
-    define('APP_URL', $scheme . '://' . $host . $base);
-}
-
-PHP;
-                $appUrlBlock = str_replace('__CLI_FALLBACK__', var_export(rtrim($appUrl, '/'), true), $appUrlBlock);
-                $configContent .= $appUrlBlock;
-                $configContent .= "define('APP_NAME', 'Averion');\n";
+                $configContent .= "define('APP_URL', " . var_export(rtrim($appUrl, '/'), true) . ");\n";
+                $configContent .= "define('APP_NAME', 'Darmutiara Islamic');\n";
                 $configContent .= "// APP_VERSION dibaca dari version.php (di-overwrite otomatis saat update sistem).\n";
-                $configContent .= "require_once __DIR__ . '/version.php';\n";
+                $configContent .= "require_once DARMUTIARA_ROOT . '/version.php';\n";
                 $configContent .= "\n";
                 $configContent .= "// ─── Session ──────────────────────────────────────────────────\n";
-                $configContent .= "define('SESSION_NAME', 'averion_sess');\n";
+                $configContent .= "define('SESSION_NAME', 'darmutiara_sess');\n";
                 $configContent .= "\n";
                 $configContent .= "// ─── Upload ───────────────────────────────────────────────────\n";
-                $configContent .= "define('UPLOAD_PATH', __DIR__ . '/assets/uploads/');\n";
+                $configContent .= "define('UPLOAD_PATH', DARMUTIARA_ROOT . '/assets/uploads/');\n";
                 $configContent .= "define('UPLOAD_URL', APP_URL . '/assets/uploads/');\n";
                 $configContent .= "define('MAX_UPLOAD_SIZE', 2 * 1024 * 1024);\n";
                 $configContent .= "\n";
                 $configContent .= "// ─── Download Manager (file terproteksi di luar webroot) ──────\n";
-                $configContent .= "define('DOWNLOAD_STORAGE_PATH', __DIR__ . '/storage/downloads/');\n";
+                $configContent .= "define('DOWNLOAD_STORAGE_PATH', DARMUTIARA_ROOT . '/storage/downloads/');\n";
                 $configContent .= "define('DOWNLOAD_MAX_SIZE', 100 * 1024 * 1024);\n";
                 $configContent .= "\n";
                 $configContent .= "// ─── Update System ────────────────────────────────────────────\n";
-                $configContent .= "define('UPDATE_BACKUP_PATH', dirname(__DIR__) . '/backups/');\n";
+                $configContent .= "define('UPDATE_BACKUP_PATH', DARMUTIARA_ROOT . '/backups/');\n";
                 $configContent .= "define('UPDATE_TEMP_PATH',   __DIR__ . '/storage/update-tmp/');\n";
                 $configContent .= "\n";
                 $configContent .= "// ─── License Server ───────────────────────────────────────────\n";
-                $configContent .= "define('LICENSE_SERVER_URL', 'https://vendor.averion.id/api');\n";
-                // Aktifkan enforcement lisensi untuk instalasi buyer. Verifikasi token
-                // Ed25519 memakai ekstensi sodium bila tersedia; bila TIDAK ada, sejak
-                // v1.2.87 aplikasi tetap jalan (payload token dipercaya + banner peringatan
-                // admin) — sodium jadi "direkomendasikan", bukan pemblokir. Aktivasi lisensi
-                // via /admin/license-activate saat/ setelah instalasi.
-                $configContent .= "define('LICENSE_ENFORCEMENT_ENABLED', true);\n";
+                $configContent .= "define('LICENSE_SERVER_URL', 'https://lisensi.darmutiara.com/v1');\n";
                 $configContent .= "\n";
                 $configContent .= "// ─── Kontak Vendor (ditampilkan di halaman license-expired) ───\n";
-                $configContent .= "define('VENDOR_EMAIL', 'support@averion.id');\n";
-                $configContent .= "define('VENDOR_WHATSAPP', '628xxxxxxxxxx');\n";
+                $configContent .= "define('VENDOR_EMAIL', '');\n";
+                $configContent .= "define('VENDOR_WHATSAPP', '');\n";
 
                 if (file_put_contents($appRoot . '/config.php', $configContent) === false) {
                     throw new RuntimeException('Gagal menulis config.php. Pastikan folder bisa ditulis.');

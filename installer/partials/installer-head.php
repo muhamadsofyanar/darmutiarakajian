@@ -13,15 +13,15 @@ if (!function_exists('getSetting')) {
     function getSetting(string $key, ?string $default = null): ?string
     {
         $defaults = [
-            'app_name'    => 'Averion',
-            'brand_color' => '#6366f1',
+            'app_name'    => 'Darmutiara Islamic',
+            'brand_color' => '#176650',
         ];
         return $defaults[$key] ?? $default;
     }
 }
 
-$_appName    = getSetting('app_name', 'Averion');
-$_brand      = getSetting('brand_color', '#6366f1');
+$_appName    = getSetting('app_name', 'Darmutiara Islamic');
+$_brand      = getSetting('brand_color', '#176650');
 $_initials   = strtoupper(substr($_appName, 0, 1));
 $_totalSteps = 4;
 ?>
@@ -31,15 +31,6 @@ $_totalSteps = 4;
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Installer — <?= e($_appName) ?></title>
-  <?php
-  $_faviconSvg = rawurlencode(
-      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">' .
-      '<rect width="32" height="32" rx="8" fill="' . $_brand . '"/>' .
-      '<path fill="none" stroke="white" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" d="M10 23 L16 9 L22 23 M12.5 19 H19.5"/>' .
-      '</svg>'
-  );
-  ?>
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<?= $_faviconSvg ?>">
   <link rel="stylesheet" href="<?= e(str_replace('/views', '', dirname($_SERVER['SCRIPT_NAME']))) ?>/assets/installer.css">
   <!-- Tailwind compiled lokal (tanpa CDN — installer harus jalan walau koneksi
        keluar diblokir). Warna brand via var (kompatibel CSS hasil compile). -->
@@ -59,7 +50,7 @@ $_totalSteps = 4;
           <span class="text-white font-bold text-xl"><?= e($_initials) ?></span>
         </div>
         <span class="font-bold text-lg text-gray-900"><?= e($_appName) ?></span>
-        <p class="text-xs text-gray-400 mt-0.5">Installer Wizard</p>
+        <p class="text-xs text-gray-400 mt-0.5">Pemasangan aplikasi</p>
       </div>
 
       <!-- Progress bar segmented -->

@@ -19,7 +19,7 @@ $appVersion = defined('APP_VERSION') ? APP_VERSION : getSetting('app_version', '
 $renewUrl   = trim((string) getSetting('vendor_renew_url', ''));
 // Abaikan URL dev/localhost (mis. dari license server lokal) → pakai URL renew vendor produksi.
 if ($renewUrl === '' || stripos($renewUrl, 'localhost') !== false || stripos($renewUrl, 'averion-license') !== false) {
-    $renewUrl = 'https://vendor.averion.id/renew';
+    $renewUrl = 'https://darmutiara.com';
 }
 
 // Sumber lisensi: 'direct' (vendor) atau 'agency'. Bila dikelola agency, JANGAN
@@ -249,7 +249,7 @@ generateCSRF();
             <div class="p-5 space-y-4">
               <div>
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">License Key</label>
-                <input type="text" name="license_key" required placeholder="XXXX-XXXX-XXXX-XXXX"
+                <input type="text" name="license_key" required placeholder="DRM-…" maxlength="47"
                        class="w-full px-3.5 py-2.5 rounded-lg text-sm border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white font-mono placeholder-gray-300 dark:placeholder-gray-600 focus:ring-2 focus:ring-[var(--brand-color)] focus:border-transparent outline-none transition"
                        autocomplete="off" spellcheck="false">
                 <p class="text-xs text-gray-400 dark:text-gray-600 mt-1.5">

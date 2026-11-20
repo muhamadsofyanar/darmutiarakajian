@@ -4,15 +4,15 @@
 
 // Kontak vendor & link perpanjangan diatur terpusat di License Server (Vendor Panel)
 // dan disinkron ke sini lewat respons API. Fallback ke konstanta config bila belum sync.
-$vendorEmail = getSetting('vendor_support_email', defined('VENDOR_EMAIL') ? VENDOR_EMAIL : 'support@averion.id');
+$vendorEmail = getSetting('vendor_support_email', defined('VENDOR_EMAIL') ? VENDOR_EMAIL : '');
 $vendorWa    = getSetting('vendor_support_whatsapp', defined('VENDOR_WHATSAPP') ? VENDOR_WHATSAPP : '');
 $vendorWa    = ($vendorWa !== null && trim($vendorWa) !== '') ? $vendorWa : null;
 $renewUrl    = trim((string) getSetting('vendor_renew_url', ''));
 // Abaikan URL dev/localhost (mis. dari license server lokal) → pakai URL renew vendor produksi.
 if ($renewUrl === '' || stripos($renewUrl, 'localhost') !== false || stripos($renewUrl, 'averion-license') !== false) {
-    $renewUrl = 'https://vendor.averion.id/renew';
+    $renewUrl = 'https://darmutiara.com';
 }
-$appName     = getSetting('app_name', 'Averion');
+$appName     = getSetting('app_name', 'Darmutiara Islamic');
 
 // Source lisensi: 'direct' (vendor) atau 'agency'. Jika dikelola agency,
 // tampilkan kontak agency, bukan tombol perpanjang/kontak vendor.
@@ -39,19 +39,11 @@ $statusLabels = [
 $statusMessage = $statusLabels[$license['status'] ?? 'unknown'] ?? $statusLabels['unknown'];
 
 // Langkah perpanjangan menyesuaikan: self-service (ada link) vs manual (kontak).
-$steps = $renewUrl
-    ? [
-        'Klik tombol <strong>Perpanjang Lisensi Sekarang</strong> di bawah',
-        'Masukkan license key &amp; email yang terdaftar',
-        'Pilih paket lalu selesaikan pembayaran',
-        'Lisensi otomatis aktif kembali setelah pembayaran',
-      ]
-    : [
-        'Hubungi kami via email atau WhatsApp di bawah',
-        'Sebutkan domain instalasi Anda',
-        'Lakukan pembayaran sesuai instruksi',
-        'Lisensi diperpanjang dalam 1×24 jam kerja',
-      ];
+$steps = [
+    'Hubungi pengurus Darmutiara untuk memeriksa lisensi.',
+    'Sebutkan domain instalasi.',
+    'Setelah lisensi siap, masuk sebagai admin dan buka halaman aktivasi.',
+];
 
 $brandColor = getSetting('brand_color', '#6366f1');
 // Favicon SVG inline — encode '#' agar valid di data URI.

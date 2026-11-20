@@ -67,12 +67,12 @@ if ($appUrlOverride !== '') {
     $base = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '')), '/');
     define('APP_URL', $scheme . '://' . $host . $base);
 }
-define('APP_NAME', 'Averion');
+define('APP_NAME', 'Darmutiara Islamic');
 define('UPDATE_BACKUP_PATH', dirname(__DIR__) . '/backups/');
 define('UPDATE_TEMP_PATH',   __DIR__ . '/storage/update-tmp/');
 
 // ─── Session ──────────────────────────────────────────────────
-define('SESSION_NAME', 'averion_sess');
+define('SESSION_NAME', 'darmutiara_sess');
 
 // ─── Upload ───────────────────────────────────────────────────
 define('UPLOAD_PATH', __DIR__ . '/assets/uploads/');
@@ -84,7 +84,7 @@ define('DOWNLOAD_STORAGE_PATH', __DIR__ . '/storage/downloads/');
 define('DOWNLOAD_MAX_SIZE', 100 * 1024 * 1024); // 100MB per file
 
 // ─── License Server ───────────────────────────────────────────
-define('LICENSE_SERVER_URL', 'https://vendor.averion.id/api');
+define('LICENSE_SERVER_URL', 'https://lisensi.darmutiara.com/v1');
 
 // ─── License Enforcement (signed-token hardening) ─────────────
 // Enforcement lisensi (hardening A1/A4). Public key vendor asli sudah
@@ -95,5 +95,5 @@ define('LICENSE_SERVER_URL', 'https://vendor.averion.id/api');
 define('LICENSE_ENFORCEMENT_ENABLED', true);
 
 // ─── Kontak Vendor (ditampilkan di halaman license-expired) ───
-define('VENDOR_EMAIL', 'support@averion.id');
+define('VENDOR_EMAIL', '');
 define('VENDOR_WHATSAPP', '628xxxxxxxxxx');

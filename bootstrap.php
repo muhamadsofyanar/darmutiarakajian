@@ -80,6 +80,7 @@ $__averionCoreFiles = [
 
     // ── Modul fokus (sudah ada sebelum pemecahan monolit) ──
     __DIR__ . '/helpers/pixel-crypto.php',        // enkripsi token pixel/CAPI (dipisah dari helpers.php: anti false-positive AV)
+    __DIR__ . '/helpers/darmutiara-license.php',
     __DIR__ . '/helpers/license-token.php',       // verifikasi signed token lisensi (hardening A1/A4)
     __DIR__ . '/helpers/vendor-fulfillment.php',  // pesan lisensi ke server vendor (default MATI)
     __DIR__ . '/helpers/agency-seo.php',          // Portal Agency SEO Engine (vendor-only): kuota 50 slot + terbit per-slot
@@ -201,18 +202,6 @@ if (!empty($_GET['fbclid']) && empty($_SESSION['_fbclid'])) {
 // ─── License Enforcement ──────────────────────────────────────
 // Baca dari cache lokal (license_info), bukan call API setiap request.
 // Token di-refresh di background bila cache basi (lihat _maybeRefreshLicenseToken).
-// Konstanta interval HARUS didefinisikan SEBELUM _enforceLicense() dipanggil
-// (define tidak di-hoist seperti fungsi) — interval refresh otomatis 12 jam.
-if (!defined('LICENSE_REFRESH_INTERVAL_SECONDS')) {
-    define('LICENSE_REFRESH_INTERVAL_SECONDS', 43200);
-}
-// Saat status BERMASALAH (expired/suspended/unknown), cek ke server jauh lebih
-// sering (default 5 menit) — supaya sesudah buyer memperpanjang, situsnya
-// terbuka kembali otomatis tanpa harus menekan tombol apa pun. Saat 'active'
-// tetap hemat (12 jam).
-if (!defined('LICENSE_REFRESH_INTERVAL_PROBLEM_SECONDS')) {
-    define('LICENSE_REFRESH_INTERVAL_PROBLEM_SECONDS', 300);
-}
 _enforceLicense();
 
 // Pelajari URL kanonik dari request web nyata → setting app_url (dipakai baseUrl()),
@@ -232,7 +221,7 @@ _maybeRunAutoCron();
 function parseDomainFromAppUrl(): string
 {
     $host = parse_url(APP_URL, PHP_URL_HOST);
-    return is_string($host) ? strtolower($host) : '';
+    return is_string($host) ? strtolower(rtrim($host, '.')) : '';
 }
 
 /**
@@ -364,6 +353,9 @@ function _enforceLicense(): void
 
     $ls       = _resolveCurrentLicenseState();
     $isAdminP = str_starts_with($path, '/admin');
+    if ($path === '/kajian' && $ls['state'] !== 'valid') {
+        redirect('/license-expired');
+    }
 
     // 0) VERIFIKASI KRIPTO NONAKTIF (OPSI B) → banner peringatan admin. Muncul
     //    saat token dipercaya tanpa bukti signature (hosting tanpa sodium/RSA).
@@ -661,134 +653,35 @@ function _runAutoCronTasks(): void
 
 function _scheduleLicenseRefresh(string $licenseKey, string $domain): void
 {
-    // Fire-and-forget: refresh dijalankan setelah response dikirim ke client
-    ignore_user_abort(true);
-    $key    = $licenseKey;
-    $dom    = $domain;
-
-    register_shutdown_function(function() use ($key, $dom) {
+    register_shutdown_function(static function () use ($licenseKey, $domain): void {
         try {
-            $payload = [
-                'license_key' => $key,
-                'domain'      => $dom,
-                'instance_id' => function_exists('licenseInstanceId') ? licenseInstanceId() : '',
-                // Telemetri ringan untuk vendor (tampil di detail lisensi).
-                'app_version' => defined('APP_VERSION') ? APP_VERSION : '',
-                'enforcement' => function_exists('licenseEnforcementActive') && licenseEnforcementActive() ? 1 : 0,
-            ];
-
-            // cURL (bukan file_get_contents/stream) — konsisten dgn licenseServerPost(),
-            // agar re-validasi background tak ikut gagal saat allow_url_fopen off.
-            $req    = function_exists('licenseServerPost') ? licenseServerPost('validate', $payload, 8) : ['ok' => false, 'body' => null, 'error' => ''];
-            $result = $req['ok'] ? $req['body'] : false;
-
-            if ($result === false) {
-                // Server tidak bisa dihubungi — pertahankan cache yang ada
-                error_log('[license-refresh] Tidak bisa menghubungi License Server. Cache dipertahankan.' . ($req['error'] !== '' ? ' ' . $req['error'] : ''));
+            $db = getDB();
+            $claim = $db->prepare(
+                "UPDATE license_info SET last_checked_at = NOW()
+                 WHERE BINARY license_key = ? AND domain = ?
+                   AND (last_checked_at IS NULL OR last_checked_at <= NOW() - INTERVAL 1 HOUR)"
+            );
+            $claim->execute([$licenseKey, $domain]);
+            if ($claim->rowCount() === 0) {
                 return;
             }
-
-            $data = json_decode($result, true);
-            if (!is_array($data)) {
-                error_log('[license-refresh] Respons tidak valid dari License Server.');
-                return;
+            if (function_exists('fastcgi_finish_request')) {
+                fastcgi_finish_request();
             }
-
-            // Simpan kontak vendor (untuk halaman license-expired) jika dikirim server.
-            if (array_key_exists('support_email', $data)) {
-                setSetting('vendor_support_email', (string) $data['support_email'], 'license');
+            $result = requestDarmutiaraLicense($licenseKey, $domain);
+            if (isset($result['token']) || !empty($result['denied'])) {
+                $db->prepare(
+                    "UPDATE license_info SET signed_token = ?, token_valid_until = FROM_UNIXTIME(?), status = ?
+                     WHERE BINARY license_key = ? AND domain = ?"
+                )->execute([$result['token'] ?? null, $result['exp'] ?? null,
+                    isset($result['token']) ? 'active' : 'expired', $licenseKey, $domain]);
             }
-            if (array_key_exists('support_whatsapp', $data)) {
-                setSetting('vendor_support_whatsapp', (string) $data['support_whatsapp'], 'license');
-            }
-            if (array_key_exists('renew_url', $data)) {
-                setSetting('vendor_renew_url', (string) $data['renew_url'], 'license');
-            }
-            // Source & kontak agency (untuk halaman license-expired saat agency).
-            if (array_key_exists('source', $data)) {
-                setSetting('license_source', (string) $data['source'], 'license');
-                if (($data['source'] ?? '') === 'agency') {
-                    setSetting('agency_contact_wa', (string) ($data['agency_contact_wa'] ?? ''), 'license');
-                    setSetting('agency_contact_email', (string) ($data['agency_contact_email'] ?? ''), 'license');
-                }
-            }
-
-            // ── Map status dari respons ──
-            $status = 'unknown';
-            if (isset($data['valid'])) {
-                if ($data['valid']) {
-                    $status = 'active'; // valid (termasuk grace) → aktif lokal
-                } else {
-                    $status = $data['status'] ?? 'unknown';
-                    if (!in_array($status, ['active', 'expired', 'suspended', 'unknown'], true)) {
-                        $status = 'unknown';
-                    }
-                }
-            }
-
-            // ── Ekstrak signed token (hardening) — sumber kebenaran status saat ada ──
-            $signedToken     = isset($data['signed_token']) ? (string) $data['signed_token'] : '';
-            $tokenValidUntil = null;
-            $planEffective   = null;
-            if ($signedToken !== '') {
-                $tp = explode('.', $signedToken);
-                if (count($tp) === 3) {
-                    $rawP = base64UrlDecode($tp[1]); // decode payload (cache; verifikasi saat enforcement)
-                    if ($rawP !== false) {
-                        $tpl = json_decode($rawP, true);
-                        if (is_array($tpl)) {
-                            if (in_array(($tpl['status'] ?? ''), ['active', 'expired', 'suspended', 'unknown'], true)) {
-                                $status = $tpl['status']; // mis. 'suspended' → tercermin di kolom
-                            }
-                            if (!empty($tpl['valid_until']) && strtotime((string) $tpl['valid_until']) !== false) {
-                                $tokenValidUntil = date('Y-m-d H:i:s', strtotime((string) $tpl['valid_until']));
-                            }
-                            if (in_array(($tpl['plan'] ?? ''), ['monthly', 'quarterly', 'yearly', 'lifetime'], true)) {
-                                $planEffective = $tpl['plan'];
-                            }
-                        }
-                    }
-                }
-            }
-
-            $expiresAt = !empty($data['expires_at']) ? date('Y-m-d H:i:s', strtotime($data['expires_at'])) : null;
-            $pdo = getDB();
-
-            if ($signedToken !== '') {
-                // Server kirim token baru → segarkan token + cache.
-                $pdo->prepare(
-                    "UPDATE license_info SET status = ?, plan_effective = COALESCE(?, plan_effective),
-                       expires_at = ?, signed_token = ?, token_valid_until = ?,
-                       last_checked_at = NOW(), raw_response = ?, updated_at = NOW()
-                     WHERE license_key = ?"
-                )->execute([$status, $planEffective, $expiresAt, $signedToken, $tokenValidUntil, json_encode($data), $key]);
-            } else {
-                // Tidak ada token baru (server lama / signing nonaktif) → JANGAN timpa
-                // signed_token lama dengan kosong; cukup perbarui status & cache.
-                $pdo->prepare(
-                    "UPDATE license_info SET status = ?, expires_at = ?, last_checked_at = NOW(),
-                       raw_response = ?, updated_at = NOW()
-                     WHERE license_key = ?"
-                )->execute([$status, $expiresAt, json_encode($data), $key]);
-            }
-
-            if ($status === 'active') {
-                setSetting('license_verified_once', '1', 'license');
-            }
-
-        } catch (Exception $e) {
-            error_log('[license-refresh] Error: ' . $e->getMessage());
+        } catch (Throwable $error) {
+            error_log('[darmutiara-license] Gagal memperbarui bukti aktivasi.');
         }
     });
 }
 
-/**
- * Jadwalkan refresh token berkala bila cache (last_checked_at) sudah basi.
- * Interval: LICENSE_REFRESH_INTERVAL_SECONDS (didefinisikan di atas, sebelum
- * _enforceLicense dipanggil — define tidak di-hoist).
- * Dipanggil saat enforcement aktif. Tidak memblokir request (HTTP call dijalankan
- * di shutdown). Lewati status pending_activation (ditangani saat login admin).
- */
 function _maybeRefreshLicenseToken(): void
 {
     // Pakai baris license_info yang sama (shared, static-cached) — tanpa query
@@ -800,13 +693,8 @@ function _maybeRefreshLicenseToken(): void
     if (($row['status'] ?? '') === 'pending_activation') {
         return;
     }
-    // Status bermasalah → interval pendek (cek agresif), agar recovery pasca
-    // perpanjangan cepat. Status aktif → interval hemat 12 jam.
-    $interval = in_array(($row['status'] ?? ''), ['expired', 'suspended', 'unknown'], true)
-        ? LICENSE_REFRESH_INTERVAL_PROBLEM_SECONDS
-        : LICENSE_REFRESH_INTERVAL_SECONDS;
-    $last  = $row['last_checked_at'] ?? null;
-    $stale = empty($last) || (time() - strtotime((string) $last)) > $interval;
+    $last = $row['last_checked_at'] ?? null;
+    $stale = empty($last) || time() - strtotime((string) $last) >= 3600;
     if ($stale) {
         _scheduleLicenseRefresh($row['license_key'], parseDomainFromAppUrl());
     }

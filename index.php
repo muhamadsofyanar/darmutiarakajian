@@ -1,10 +1,8 @@
 <?php
 // ─── Redirect ke installer jika belum dikonfigurasi ──────────
 if (!file_exists(__DIR__ . '/config.php')) {
-    $scheme  = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-    $host    = $_SERVER['HTTP_HOST'] ?? 'localhost';
-    $base    = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/\\');
-    header('Location: ' . $scheme . '://' . $host . $base . '/installer/');
+    $base = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/');
+    header('Location: ' . $base . '/installer/');
     exit;
 }
 

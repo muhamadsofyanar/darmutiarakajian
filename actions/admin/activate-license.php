@@ -41,7 +41,7 @@ if (!validateCSRF($_POST['csrf_token'] ?? '')) {
     redirect('/admin/license-activate');
 }
 
-$licenseKey = strtoupper(preg_replace('/[^A-Z0-9\-]/', '', trim($_POST['license_key'] ?? '')));
+$licenseKey = trim((string) ($_POST['license_key'] ?? ''));
 if ($licenseKey === '') {
     flash('error', 'License key tidak boleh kosong.', 'error');
     redirect('/admin/license-activate');

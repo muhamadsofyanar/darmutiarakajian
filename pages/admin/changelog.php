@@ -29,42 +29,8 @@ $CACHE_TTL = 6 * 3600; // 6 jam
  */
 function fetchVendorChangelog(array $license, string $currentVersion): array
 {
-    if (!function_exists('curl_init')) {
-        return ['ok' => false, 'releases' => [], 'message' => 'cURL tidak tersedia di server.'];
-    }
-    $payload = json_encode([
-        'license_key'     => $license['license_key'] ?? '',
-        'domain'          => $license['domain'] ?? ($_SERVER['HTTP_HOST'] ?? 'localhost'),
-        'current_version' => $currentVersion,
-    ]);
+    return ['ok' => false, 'releases' => [], 'message' => 'Catatan rilis tersedia di repositori Darmutiara Islamic.'];
 
-    $ch = curl_init(rtrim(LICENSE_SERVER_URL, '/') . '/changelog');
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_POST           => true,
-        CURLOPT_POSTFIELDS     => $payload,
-        CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
-        CURLOPT_CONNECTTIMEOUT => 8,
-        CURLOPT_TIMEOUT        => 15,
-        CURLOPT_SSL_VERIFYPEER => true,
-    ]);
-    $response = curl_exec($ch);
-    $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $curlErr  = curl_error($ch);
-    curl_close($ch);
-
-    if ($response === false || $httpCode === 0) {
-        error_log('changelog fetch curl error: ' . $curlErr);
-        return ['ok' => false, 'releases' => [], 'message' => 'Tidak dapat menghubungi server update.'];
-    }
-    $data = json_decode($response, true);
-    if (!is_array($data)) {
-        return ['ok' => false, 'releases' => [], 'message' => 'Respons server update tidak valid.'];
-    }
-    if (empty($data['success']) || !isset($data['releases']) || !is_array($data['releases'])) {
-        return ['ok' => false, 'releases' => [], 'message' => (string) ($data['message'] ?? 'Gagal memuat changelog.')];
-    }
-    return ['ok' => true, 'releases' => $data['releases'], 'message' => ''];
 }
 
 /**

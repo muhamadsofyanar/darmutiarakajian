@@ -1,37 +1,40 @@
-# Darmutiara · paket uji Averion 1.2.262
+# Darmutiara Islamic
 
-Paket ini menggabungkan arsip kode, arsip pelengkap, dan folder sertifikat dari container RizqHub. Dockerfile disalin dengan nilai bawaan Coolify produksi dihapus. Paket menggunakan database baru untuk uji lokal.
+Paket ini memakai Darmutiara Kajian 1.2.262 sebagai dasar. Installer dan aktivasi instalasi memakai identitas Darmutiara Islamic. Kajian, pendaftaran, pengingat kalender, diskusi anggota, dan moderasi memakai modul Kajian yang sudah ada. Integrasi opsional dari paket dasar, seperti relay dan portal agen, tetap memakai konfigurasi dan penyedia masing-masing. Pembaruan aplikasi dipasang lewat GitHub.
 
-## Menjalankan di Windows
+## Pemasangan baru di VPS dengan Docker Compose
 
-1. Ekstrak ZIP, lalu buka CMD di folder yang memuat `compose.yaml`. Siapkan Docker Desktop dan pastikan Docker sedang berjalan.
-2. Jalankan `copy .env.example .env`. Buka `.env` dan isi kedua password dengan nilai baru yang kuat dan berbeda untuk lingkungan uji. Gunakan karakter alfanumerik agar mudah dimasukkan kembali di installer.
-3. Jalankan `docker compose up -d --build`. Tunggu MariaDB siap. Jika perlu, lihat `docker compose logs db`.
-4. Buka `http://localhost:8080/installer/`. Apabila port 8080 sedang dipakai, ubah `DARMUTIARA_HTTP_PORT` di `.env` dan gunakan port tersebut di browser.
+1. Siapkan Docker dan plugin Docker Compose di VPS. Ambil repositori `muhamadsofyanar/darmutiarakajian` setelah semua file update di-commit. Jalankan perintah dari folder yang memuat `compose.yaml`.
+2. Untuk pemasangan baru, jalankan `cp .env.example .env`. Isi dua password database yang berbeda dan acak. Gunakan `openssl rand -hex 24` dua kali untuk membuat keduanya. Jangan commit `.env`.
+3. Setel `DARMUTIARA_APP_URL=https://DOMAIN-KAJIAN-ANDA` ke URL HTTPS final. Isi `DARMUTIARA_ISSUER_PUBLIC_KEY` dengan **nilai** `public_key` dari `python lisensi.py public-key` di terminal penerbit Darmutiara. Simpan `.env`.
+4. Jalankan `docker compose up -d --build`. Compose menerbitkan port aplikasi di loopback VPS, secara bawaan `127.0.0.1:8080`. Jika port sudah dipakai, ubah `DARMUTIARA_HTTP_PORT` di `.env`. Arahkan reverse proxy HTTPS domain ke port loopback tersebut. Teruskan header `Host` dan set `X-Forwarded-Proto: https` di proxy. Batasi akses ke `/installer/` pada proxy selama setup agar hanya pengurus yang bisa menjalankannya.
+5. Buka `https://DOMAIN-KAJIAN-ANDA/installer/`. Masukkan data berikut, lalu buat akun admin.
 
-| Kolom installer | Nilai |
-|---|---|
-| Database host | `db` |
-| Port | `3306` |
-| Database | `darmutiara` |
-| Username database | `darmutiara` |
-| Password database | Nilai `DARMUTIARA_DB_PASSWORD` dari `.env` |
+   | Kolom | Nilai |
+   |---|---|
+   | Database host | `db` |
+   | Port | `3306` |
+   | Database | `darmutiara` |
+   | Username | `darmutiara` |
+   | Password | Nilai `DARMUTIARA_DB_PASSWORD` dari `.env` |
 
-Buat akun admin uji di installer. Gunakan aktivasi resmi jika lisensi diminta. Konfirmasikan cakupan lisensi untuk instalasi uji tambahan bila diperlukan. Pengaturan branding ada di admin setelah aplikasi siap. Atur nama **Darmutiara** dan isi program uji sesuai Darul Mutaqin Sejahtera.
+   Installer ini untuk **database kosong**. Dump bawaan berisi perintah penggantian tabel. Untuk instalasi yang sudah berisi data, pertahankan volume dan config, cadangkan database, dan jangan membuka ulang installer.
+6. Login sebagai admin dan buka `/admin/license-activate`. Di terminal **penerbit lisensi**, buat lisensi untuk host yang sama dengan `DARMUTIARA_APP_URL`:
 
-Jalankan `docker compose stop` untuk menghentikan uji sambil menyimpan data. Jalankan `docker compose start` untuk melanjutkan. Simpan `.env` sebagai file lokal.
+   ```sh
+   python lisensi.py issue --domain DOMAIN-KAJIAN-ANDA --customer "Darul Mutaqin Sejahtera" --days 30
+   ```
 
-## Uji modul Kajian dan Diskusi
+   Tempel nilai `license_key` yang diawali `DRM-`. Aplikasi akan memverifikasi tanda tangan Ed25519, domain, dan masa berlaku bukti dari penerbit. Setelah aktivasi, buka `/admin/kajian` sebagai admin dan `/kajian` sebagai anggota. Aplikasi memeriksa ulang bukti secara berkala. Masa berlaku bukti dan masa berlaku lisensi ditetapkan oleh penerbit.
 
-1. Masuk sebagai admin. Buka **Konten → Kajian** atau kunjungi `/admin/kajian`.
-2. Buat kajian, isi pemateri dan jadwal dalam WIB, lalu pilih **Terbitkan untuk anggota**. Jika kajian khusus peserta program, pilih produk Averion yang memberi akses. Masukkan tautan HTTPS pertemuan dan rekaman bila tersedia.
-3. Masuk sebagai anggota biasa. Buka **Jadwal Kajian** atau `/kajian`. Daftar ke kajian, unduh pengingat kalender, lalu tulis komentar. Impor file kalender agar aplikasi kalender Anda dapat memberi pengingat.
-4. Kembali sebagai admin. Buka kajian tadi, lihat daftar peserta, lalu coba sembunyikan dan tampilkan kembali komentar. Coba juga membuka kajian terbatas dengan akun tanpa akses produk.
+## Pembaruan instalasi Kajian yang sudah ada
 
-Untuk database uji baru, installer memasang tabel Kajian bersama skema awal. Jika Anda sudah menjalankan paket staging terdahulu, impor `migrations/darmutiara-kajian.sql` ke **database staging** dalam panel database, lalu jalankan ulang `docker compose up -d --build` dari folder paket baru bersama pengaturan `.env` staging yang lama. Migrasi itu dapat diulang dan tidak menghapus data. Lakukan pencadangan staging terlebih dahulu.
+Cadangkan database, data unggahan, dan konfigurasi sebelum mengganti kode. Pertahankan `.env`, project Compose, serta volume yang sudah dipakai. Isi variabel penerbit dan URL pada `.env`. Periksa juga `APP_URL` di `config.php` yang sudah ada dan pastikan menunjuk domain HTTPS final. Variabel URL dipakai oleh installer ketika membuat config baru. Jalankan ulang `docker compose up -d --build` dan aktivasi ulang dengan lisensi DRM untuk domain tersebut. Untuk database lama yang belum punya tabel Kajian, jalankan `migrations/darmutiara-kajian.sql` setelah pencadangan.
 
-Pengingat versi ini berupa kalender dengan pengingat 30 menit sebelum kajian. Pengurus masih bisa memakai Broadcast Averion untuk pesan WhatsApp atau email. Modul ini memakai satu instalasi komunitas dan akses produk Averion.
+## Pemasangan tanpa Docker
 
-## Status pemeriksaan
+Untuk Apache di cPanel, gunakan PHP 8.2 dengan PDO MySQL, cURL dan Sodium. Periksa ekstensi tambahan yang ditampilkan installer, aktifkan dukungan `.htaccess`, gunakan HTTPS, dan pakai database kosong yang dibuat melalui cPanel. Sediakan `DARMUTIARA_ISSUER_PUBLIC_KEY` untuk proses PHP atau definisikan konstanta dengan nama yang sama di `config.php` setelah installer selesai. Mode ini perlu diuji sesuai konfigurasi hosting.
 
-Versi, integritas ZIP, rute, referensi menu, struktur Compose, dan penyertaan skema Kajian diperiksa. PHP, Docker, dan MariaDB tidak tersedia di lingkungan pemeriksaan, sehingga build, pemasangan, aktivasi, dan alur Kajian di browser masih perlu diuji. Folder runtime akan dibuat oleh Docker saat build dan startup.
+## Uji setelah pemasangan
+
+Terbitkan kajian sebagai admin. Daftar dan unduh pengingat kalender sebagai anggota, kirim komentar, lalu coba sembunyikan dan tampilkan kembali komentar dari akun admin. Untuk kajian terbatas, cek dengan akun tanpa akses produk.
