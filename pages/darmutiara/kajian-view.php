@@ -6,11 +6,12 @@ if (!isset($root, $csrf)) {
 
 $formUrl = rtrim(APP_URL, '/') . $detailPath;
 $listUrl = rtrim(APP_URL, '/') . $path;
-$panelClass = 'rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900';
+$panelClass = 'dmi-kajian-panel rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900';
 $inputClass = 'mt-1 w-full rounded-lg border border-gray-300 bg-transparent px-3 py-2 dark:border-gray-700';
 $buttonClass = 'inline-flex rounded-lg bg-brand px-4 py-2 font-semibold text-white';
 $linkClass = 'font-semibold text-[var(--brand-color)] underline';
 $formatDate = fn (string $date): string => (new DateTimeImmutable($date, $timezone))->format('d/m/Y H:i') . ' WIB';
+$darmutiaraKajianTheme = true;
 require $root . 'partials/head.php';
 ?>
 <body class="bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
@@ -21,10 +22,19 @@ require $root . 'partials/head.php';
     <main class="flex-1 overflow-y-auto p-5 lg:p-6">
       <div class="mx-auto max-w-4xl space-y-5">
         <?php require $root . 'partials/flash-message.php'; ?>
-        <h1 class="text-2xl font-bold"><?= e($pageTitle) ?></h1>
-        <?php if ($id): ?>
-          <a class="<?= $linkClass ?>" href="<?= e($listUrl) ?>">Kembali ke daftar kajian</a>
-        <?php endif; ?>
+        <section class="dmi-hero" aria-labelledby="kajian-heading">
+          <div>
+            <h2 id="kajian-heading"><?= e($pageError === '' ? ($event['title'] ?? $pageTitle) : $pageTitle) ?></h2>
+            <?php if (!$id): ?>
+              <p><?= $admin ? 'Jadwalkan pertemuan dan kelola diskusi anggota.' : 'Temukan jadwal, tautan pertemuan, dan rekaman kajian.' ?></p>
+            <?php elseif ($pageError === '' && !empty($event['speaker'])): ?>
+              <p><?= e($event['speaker']) ?> · <?= e($formatDate($event['starts_at'])) ?></p>
+            <?php endif; ?>
+          </div>
+          <?php if ($id): ?>
+            <a class="dmi-cta" href="<?= e($listUrl) ?>"><span aria-hidden="true">←</span> Daftar Kajian</a>
+          <?php endif; ?>
+        </section>
 
         <?php if ($pageError !== ''): ?>
           <p role="alert" class="<?= $panelClass ?>"><?= e($pageError) ?></p>

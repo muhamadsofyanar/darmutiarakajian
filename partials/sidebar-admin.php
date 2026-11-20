@@ -46,7 +46,7 @@ $subIconClass = function(string $path) use ($isActive): string {
 };
 
 // Apakah group punya child aktif? (untuk auto-expand saat load)
-$isContentActive     = $isActive('/admin/kajian') || $isActive('/admin/content') || $isActive('/admin/class-categories')
+$isContentActive     = $isActive('/admin/content') || $isActive('/admin/class-categories')
                     || $isActive('/admin/media')
                     || $isActive('/admin/downloads') || $isActive('/admin/certificates') || $isActive('/admin/reviews');
 $isMarketingActive   = $isActive('/admin/subscriptions')
@@ -91,7 +91,7 @@ $isKonfigurasiActive = $isActive('/admin/notifications')
                     || $isActive('/admin/data-import')
                     || $isActive('/admin/system-health');
 
-$appName  = getSetting('app_name', 'Averion');
+$appName  = getSetting('app_name', 'Darmutiara Islamic');
 $appLogo  = getSetting('app_logo', '');
 $userName  = $_SESSION['name'] ?? 'Admin';
 $userEmail = $_SESSION['email'] ?? '';
@@ -130,20 +130,16 @@ $userEmail = $_SESSION['email'] ?? '';
   }
 </style>
 <!-- Sidebar Admin -->
-<aside id="sidebar" class="sidebar fixed inset-y-0 left-0 z-40 w-60 flex flex-col bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 lg:translate-x-0 -translate-x-full">
+<aside id="sidebar" class="sidebar darmutiara-sidebar fixed inset-y-0 left-0 z-40 w-60 flex flex-col bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 lg:translate-x-0 -translate-x-full">
 
   <!-- Logo / App Name -->
-  <div class="flex items-center gap-3 px-5 py-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
+  <div class="dmi-brand flex items-center gap-3 px-5 py-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
     <?php if (!empty($appLogo)): ?>
       <img src="<?= e($appLogo) ?>" alt="<?= e($appName) ?>" class="h-8 w-auto object-contain">
     <?php else: ?>
-      <div class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style="background:var(--brand-color)">
-        <svg class="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-        </svg>
-      </div>
+      <span class="dmi-mark" aria-hidden="true">D</span>
     <?php endif; ?>
-    <span class="font-bold text-gray-900 dark:text-white text-base truncate"><?= e($appName) ?></span>
+    <span class="dmi-brand-name"><?= e($appName) ?></span>
   </div>
 
   <!-- Navigation -->
@@ -159,6 +155,13 @@ $userEmail = $_SESSION['email'] ?? '';
       </svg>
       Dashboard
     </a>
+
+    <?php if (staffCan('content')): ?>
+          <a href="<?= e(APP_URL) ?>/admin/kajian" class="<?= $navClass('/admin/kajian') ?>">
+            <svg class="<?= $iconClass('/admin/kajian') ?>" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>
+            Kelola Kajian
+          </a>
+    <?php endif; ?>
 
     <!-- Users -->
     <a href="<?= e(APP_URL) ?>/admin/users" class="<?= $navClass('/admin/users') ?>">
@@ -258,10 +261,6 @@ $userEmail = $_SESSION['email'] ?? '';
               <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
             </svg>
             Modul &amp; Materi
-          </a>
-          <a href="<?= e(APP_URL) ?>/admin/kajian" class="<?= $subNavClass('/admin/kajian') ?>">
-            <svg class="<?= $subIconClass('/admin/kajian') ?>" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>
-            Kajian
           </a>
           <a href="<?= e(APP_URL) ?>/admin/class-categories" class="<?= $subNavClass('/admin/class-categories') ?>">
             <svg class="<?= $subIconClass('/admin/class-categories') ?>" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
@@ -817,57 +816,10 @@ $userEmail = $_SESSION['email'] ?? '';
 
   </nav>
 
-  <!-- Kartu Averion Studio — bonus member, selalu terlihat (footer fixed, di atas Keluar).
-       Warna SELALU dari var(--brand-color) via color-mix (ikut Appearance theme aktif,
-       DILARANG hardcode hex accent). Radius boxy 8px. TANPA SSO — buka tab baru. -->
-  <style>
-    .studio-promo-card {
-      display: flex; align-items: center; gap: .625rem;
-      padding: .625rem .75rem; border-radius: 8px;
-      background: color-mix(in srgb, var(--brand-color) 10%, transparent);
-      border: 1px solid color-mix(in srgb, var(--brand-color) 25%, transparent);
-      -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
-      transition: background-color 150ms ease;
-    }
-    .studio-promo-card:hover {
-      background: color-mix(in srgb, var(--brand-color) 18%, transparent);
-    }
-  </style>
-  <div class="shrink-0 px-3 pt-3 pb-3">
-    <a href="https://studio.averion.id" target="_blank" rel="noopener" class="studio-promo-card" title="Averion Studio — asisten promosi, bonus member">
-      <span class="shrink-0 w-8 h-8 rounded-md flex items-center justify-center" style="background:color-mix(in srgb, var(--brand-color) 14%, transparent)">
-        <!-- Mark segitiga Averion Studio (logo produk — gradien teal melekat pada
-             logo, bukan elemen ber-theme; wadah kotak tetap ikut accent). -->
-        <svg style="width:1.25rem;height:1.25rem" viewBox="0 0 34 34" fill="none" aria-hidden="true">
-          <defs>
-            <linearGradient id="avStudioMark" x1="7" y1="5" x2="29" y2="30" gradientUnits="userSpaceOnUse">
-              <stop stop-color="#2dd4bf"/><stop offset=".55" stop-color="#14b8a6"/><stop offset="1" stop-color="#0f766e"/>
-            </linearGradient>
-            <linearGradient id="avStudioMarkHi" x1="10" y1="5" x2="17" y2="23" gradientUnits="userSpaceOnUse">
-              <stop stop-color="#ffffff" stop-opacity=".38"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
-            </linearGradient>
-            <clipPath id="avStudioMarkClip"><path d="M17 4.2 L30.4 28.8 H3.6 Z"/></clipPath>
-          </defs>
-          <path fill-rule="evenodd" clip-rule="evenodd"
-                d="M17 4.2 L30.4 28.8 H3.6 Z M17 13.8 L23.8 26.4 H10.2 Z"
-                fill="url(#avStudioMark)" stroke="url(#avStudioMark)" stroke-width="3.2" stroke-linejoin="round"/>
-          <path d="M17 4.2 L3.6 28.8 H12.6 L17 4.2 Z" fill="url(#avStudioMarkHi)" clip-path="url(#avStudioMarkClip)"/>
-        </svg>
-      </span>
-      <span class="min-w-0 flex-1">
-        <span class="block text-[13px] font-semibold leading-tight text-gray-900 dark:text-white truncate">Averion Studio</span>
-        <span class="block text-[11px] leading-tight text-gray-500 dark:text-gray-400 truncate">Asisten Marketing</span>
-      </span>
-      <svg class="w-3.5 h-3.5 shrink-0 text-gray-400 dark:text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-      </svg>
-    </a>
-  </div>
-
   <!-- Logout -->
-  <div class="shrink-0 border-t border-gray-200 dark:border-gray-800 px-3 py-3">
+  <div class="dmi-logout shrink-0 border-t border-gray-200 dark:border-gray-800 px-3 py-3">
     <button type="button"
-       onclick="confirmAndRun({title:'Keluar dari Akun?',message:'Kamu akan keluar dari sesi Averion ini.',confirmText:'Ya, Keluar',variant:'warning'}, () => { document.getElementById('logout-form').submit(); })"
+       onclick="confirmAndRun({title:'Keluar dari Akun?',message:'Kamu akan keluar dari sesi Darmutiara Islamic ini.',confirmText:'Ya, Keluar',variant:'warning'}, () => { document.getElementById('logout-form').submit(); })"
        class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-500 dark:text-gray-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 dark:hover:text-red-400 transition-colors font-medium w-full text-left">
       <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>

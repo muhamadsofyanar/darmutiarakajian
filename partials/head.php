@@ -1,9 +1,9 @@
 <?php
 // Variabel yang bisa diset oleh halaman yang meng-include:
 // $pageTitle (string) — judul tab browser
-$pageTitle       = $pageTitle       ?? getSetting('app_name', 'Averion');
-$brandColor      = getSetting('brand_color', '#6366f1');
-$brandColorLight = getSetting('brand_color_secondary', '#818cf8');
+$pageTitle       = $pageTitle       ?? getSetting('app_name', 'Darmutiara Islamic');
+$brandColor      = getSetting('brand_color', '#176650');
+$brandColorLight = getSetting('brand_color_secondary', '#258468');
 // Dark mode disimpan di cookie (di-set oleh JS) agar server bisa render
 // <html class="dark"> sejak byte pertama → cegah kedip putih saat pindah menu.
 // Fallback ke setting dark_mode_default bila cookie belum ada.
@@ -11,7 +11,7 @@ $darkPref = $_COOKIE['averion_dark'] ?? '';
 if ($darkPref === '1')     $darkDefault = 'dark';
 elseif ($darkPref === '0') $darkDefault = '';
 else                       $darkDefault = getSetting('dark_mode_default', '0') === '1' ? 'dark' : '';
-$appName         = getSetting('app_name', 'Averion');
+$appName         = getSetting('app_name', 'Darmutiara Islamic');
 $appFavicon      = getSetting('app_favicon', '');
 
 // ── UI Theme / Appearance ──────────────────────────────────────
@@ -20,8 +20,8 @@ require_once __DIR__ . '/../helpers/theme-config.php';
 $themeConfig    = getThemeConfig();
 $themeOnPage    = isDashboardContext();
 $htmlThemeClass = $themeOnPage
-    ? trim('dash-themed ' . $themeConfig['preview_class'] . ' sidebar-' . $themeConfig['sidebar_style'])
-    : '';
+    ? trim('darmutiara-dashboard dash-themed ' . $themeConfig['preview_class'] . ' sidebar-' . $themeConfig['sidebar_style'])
+    : (!empty($darmutiaraKajianTheme) ? 'darmutiara-dashboard' : '');
 ?>
 <!DOCTYPE html>
 <html lang="id" class="<?= e(trim($darkDefault . ' ' . $htmlThemeClass)) ?>">
@@ -97,6 +97,9 @@ $htmlThemeClass = $themeOnPage
 
   <!-- App CSS -->
   <link rel="stylesheet" href="<?= e(APP_URL) ?>/assets/css/app.css?v=<?= @filemtime(__DIR__ . '/../assets/css/app.css') ?: '1' ?>">
+<?php if ($themeOnPage || !empty($darmutiaraKajianTheme)): ?>
+  <link rel="stylesheet" href="<?= e(APP_URL) ?>/assets/css/darmutiara.css?v=<?= @filemtime(__DIR__ . '/../assets/css/darmutiara.css') ?: '1' ?>">
+<?php endif; ?>
 <?php if (getSetting('pwa_enabled', '1') === '1'): ?>
   <!-- Registrasi service worker PWA (pass-through, tanpa cache) + tangkap event
        install lebih awal (beforeinstallprompt bisa menyala sebelum app.js termuat).

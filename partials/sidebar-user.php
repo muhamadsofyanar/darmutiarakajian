@@ -28,7 +28,7 @@ $iconClass = function(string $path, bool $exact = false) use ($_uri): string {
         : 'w-5 h-5 shrink-0 text-gray-400 dark:text-gray-500 group-hover:text-gray-600 dark:group-hover:text-gray-300 transition-colors';
 };
 
-$appName   = getSetting('app_name', 'Averion');
+$appName   = getSetting('app_name', 'Darmutiara Islamic');
 $appLogo   = getSetting('app_logo', '');
 
 // Tampilkan menu "Lisensi Saya" hanya jika user punya minimal 1 license.
@@ -89,20 +89,16 @@ if ($showTickets) {
 }
 ?>
 <!-- Sidebar User -->
-<aside id="sidebar" class="sidebar fixed inset-y-0 left-0 z-40 w-60 flex flex-col bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 lg:translate-x-0 -translate-x-full">
+<aside id="sidebar" class="sidebar darmutiara-sidebar fixed inset-y-0 left-0 z-40 w-60 flex flex-col bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 lg:translate-x-0 -translate-x-full">
 
   <!-- Logo / App Name -->
-  <div class="flex items-center gap-3 px-5 py-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
+  <div class="dmi-brand flex items-center gap-3 px-5 py-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
     <?php if (!empty($appLogo)): ?>
       <img src="<?= e($appLogo) ?>" alt="<?= e($appName) ?>" class="h-8 w-auto object-contain">
     <?php else: ?>
-      <div class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style="background:var(--brand-color)">
-        <svg class="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-        </svg>
-      </div>
+      <span class="dmi-mark" aria-hidden="true">D</span>
     <?php endif; ?>
-    <span class="font-bold text-gray-900 dark:text-white text-base truncate"><?= e($appName) ?></span>
+    <span class="dmi-brand-name"><?= e($appName) ?></span>
   </div>
 
   <!-- Navigation -->
@@ -323,9 +319,9 @@ if ($showTickets) {
   </div>
 
   <!-- Logout (di BAWAH garis pemisah) -->
-  <div class="shrink-0 border-t border-gray-200 dark:border-gray-800 px-3 py-3">
+  <div class="dmi-logout shrink-0 border-t border-gray-200 dark:border-gray-800 px-3 py-3">
     <button type="button"
-       onclick="confirmAndRun({title:'Keluar dari Akun?',message:'Kamu akan keluar dari sesi Averion ini.',confirmText:'Ya, Keluar',variant:'warning'}, () => { document.getElementById('logout-form').submit(); })"
+       onclick="confirmAndRun({title:'Keluar dari Akun?',message:'Kamu akan keluar dari sesi Darmutiara Islamic ini.',confirmText:'Ya, Keluar',variant:'warning'}, () => { document.getElementById('logout-form').submit(); })"
        class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 transition-colors font-medium w-full text-left">
       <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>

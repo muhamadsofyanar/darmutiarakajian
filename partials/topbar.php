@@ -26,7 +26,7 @@ $topbarStyle   = getSetting('ui_topbar_style', 'default');
 </div>
 <?php endif; ?>
 <header id="topbar-main"
-        class="topbar topbar-<?= e($topbarStyle) ?> shrink-0 h-14 flex items-center justify-between px-4 gap-4 z-20 <?= e($topbarClasses['bg']) ?> <?= e($topbarClasses['border']) ?> <?= e($topbarClasses['text']) ?> <?= e($topbarClasses['shadow']) ?>"
+        class="topbar dmi-topbar topbar-<?= e($topbarStyle) ?> shrink-0 h-14 flex items-center justify-between px-4 gap-4 z-20 <?= e($topbarClasses['bg']) ?> <?= e($topbarClasses['border']) ?> <?= e($topbarClasses['text']) ?> <?= e($topbarClasses['shadow']) ?>"
         <?= $topbarClasses['inline_style'] ? 'style="' . e($topbarClasses['inline_style']) . '"' : '' ?>>
 
   <!-- Kiri: Hamburger + Page Title -->
@@ -34,7 +34,7 @@ $topbarStyle   = getSetting('ui_topbar_style', 'default');
     <!-- Hamburger (mobile only) -->
     <button id="sidebarToggle"
             class="lg:hidden flex items-center justify-center w-9 h-9 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors shrink-0"
-            aria-label="Toggle sidebar">
+            aria-label="Buka atau tutup menu">
       <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <line x1="3" y1="6"  x2="21" y2="6"/>
         <line x1="3" y1="12" x2="21" y2="12"/>

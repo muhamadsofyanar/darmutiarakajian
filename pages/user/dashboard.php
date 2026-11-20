@@ -94,27 +94,16 @@ try {
 
       <?php include __DIR__ . '/../../partials/flash-message.php'; ?>
 
-      <!-- Greeting -->
-      <div class="mb-6 flex items-start justify-between gap-3">
-        <div class="flex items-center gap-3">
-          <svg class="w-10 h-10 shrink-0 text-[var(--brand-color)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.5 20.118a7.5 7.5 0 0 1 15 0A17.93 17.93 0 0 1 12 21.75c-2.676 0-5.216-.584-7.5-1.632Z"/>
-          </svg>
-          <div>
-            <h2 class="text-xl font-bold text-gray-900 dark:text-white">
-              Halo, <?= e(explode(' ', $_SESSION['name'])[0]) ?>
-            </h2>
-            <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5"><?= e(date('l, d F Y')) ?></p>
-          </div>
+      <section class="dmi-hero mb-6" aria-labelledby="member-darmutiara-heading">
+        <div>
+          <h2 id="member-darmutiara-heading">Assalamu’alaikum, <?= e(explode(' ', $_SESSION['name'] ?? 'Anggota')[0]) ?></h2>
+          <p>Lihat jadwal, daftar kajian, dan ikuti diskusi bersama anggota.</p>
+          <?php if ($memberLevel): ?>
+          <p>Keanggotaan <?= e($memberLevel['name']) ?></p>
+          <?php endif; ?>
         </div>
-        <?php if ($memberLevel): ?>
-        <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold shrink-0"
-              style="background-color:<?= e($memberLevel['color']) ?>18; color:<?= e($memberLevel['color']) ?>; border:1.5px solid <?= e($memberLevel['color']) ?>40">
-          <span class="w-2 h-2 rounded-full" style="background-color:<?= e($memberLevel['color']) ?>"></span>
-          <?= e($memberLevel['name']) ?>
-        </span>
-        <?php endif; ?>
-      </div>
+        <a class="dmi-cta" href="<?= e(APP_URL) ?>/kajian">Lihat Jadwal Kajian <span aria-hidden="true">→</span></a>
+      </section>
 
       <!-- Stat Cards -->
       <?php

@@ -533,6 +533,18 @@ $typeBadge = function(string $type): string {
       }
       ?>
 
+      <section class="dmi-hero mb-6" aria-labelledby="admin-darmutiara-heading">
+        <div>
+          <h2 id="admin-darmutiara-heading">Ruang Pengurus</h2>
+          <?php if (staffCan('content')): ?>
+          <p>Terbitkan jadwal kajian, lihat peserta, dan moderasi diskusi.</p>
+          <?php endif; ?>
+        </div>
+        <?php if (staffCan('content')): ?>
+        <a class="dmi-cta" href="<?= e(APP_URL) ?>/admin/kajian">Kelola Kajian <span aria-hidden="true">→</span></a>
+        <?php endif; ?>
+      </section>
+
       <!-- Page header -->
       <div class="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
