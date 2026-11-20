@@ -1,0 +1,161 @@
+diff --git a/.dockerignore b/.dockerignore
+index aa11578..0356fdd 100644
+--- a/.dockerignore
++++ b/.dockerignore
+@@ -8,3 +8,4 @@ backups
+ storage
+ compose.yaml
+ README-DARMUTIARA.md
++.github
+diff --git a/.github/workflows/coolify-release.yml b/.github/workflows/coolify-release.yml
+new file mode 100644
+index 0000000..c6c92e4
+--- /dev/null
++++ b/.github/workflows/coolify-release.yml
+@@ -0,0 +1,133 @@
++name: Prepare Coolify release
++
++on:
++  push:
++    branches: [main]
++    paths: [version.php]
++  workflow_dispatch:
++
++permissions:
++  contents: write
++  packages: write
++
++concurrency:
++  group: coolify-release
++  cancel-in-progress: false
++
++jobs:
++  prepare:
++    if: github.ref == 'refs/heads/main'
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v6
++        with:
++          fetch-depth: 0
++
++      - name: Check release version
++        id: release
++        env:
++          REPOSITORY: ${{ github.repository }}
++        run: |
++          python3 - <<'PY'
++          import os
++          import re
++          import subprocess
++          from pathlib import Path
++
++          def version(contents):
++              match = re.search(r"""define\(\s*['"]APP_VERSION['"]\s*,\s*['"](\d+\.\d+\.\d+)['"]\s*\)""", contents)
++              if not match:
++                  raise SystemExit("APP_VERSION is missing or invalid")
++              return match.group(1)
++
++          def key(value):
++              return tuple(map(int, value.split(".")))
++
++          current = version(Path("version.php").read_text())
++          remote = subprocess.check_output(
++              ["git", "ls-remote", "origin", "refs/heads/coolify-release"], text=True
++          ).strip()
++          previous = ""
++          if remote:
++              subprocess.run(["git", "fetch", "origin", "refs/heads/coolify-release"], check=True)
++              previous = subprocess.check_output(["git", "rev-parse", "FETCH_HEAD"], text=True).strip()
++              published = version(subprocess.check_output(["git", "show", f"{previous}:version.php"], text=True))
++              if key(current) <= key(published):
++                  print(f"Version {published} is already published. Skipping {current}.")
++                  raise SystemExit(0)
++
++          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
++              print(f"version={current}", file=output)
++              print(f"image=ghcr.io/{os.environ['REPOSITORY'].lower()}", file=output)
++              print(f"previous={previous}", file=output)
++          PY
++
++      - name: Sign in to GitHub Container Registry
++        if: steps.release.outputs.version != ''
++        uses: docker/login-action@v3
++        with:
++          registry: ghcr.io
++          username: ${{ github.actor }}
++          password: ${{ secrets.GITHUB_TOKEN }}
++
++      - name: Set up Docker Buildx
++        if: steps.release.outputs.version != ''
++        uses: docker/setup-buildx-action@v3
++
++      - name: Build and publish the image
++        if: steps.release.outputs.version != ''
++        id: build
++        uses: docker/build-push-action@v6
++        with:
++          context: .
++          push: true
++          tags: ${{ steps.release.outputs.image }}:${{ steps.release.outputs.version }}
++          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
++          cache-from: type=gha
++          cache-to: type=gha,mode=max
++
++      - name: Verify the image and publish the deployment branch
++        if: steps.release.outputs.version != ''
++        env:
++          VERSION: ${{ steps.release.outputs.version }}
++          IMAGE: ${{ steps.release.outputs.image }}
++          DIGEST: ${{ steps.build.outputs.digest }}
++          PREVIOUS_RELEASE: ${{ steps.release.outputs.previous }}
++          GIT_AUTHOR_NAME: github-actions[bot]
++          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
++          GIT_COMMITTER_NAME: github-actions[bot]
++          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
++        run: |
++          ref="$IMAGE@$DIGEST"
++          docker pull "$ref"
++          actual=$(docker run --rm --entrypoint php "$ref" -r 'require "/var/www/html/version.php"; echo APP_VERSION;')
++          test "$actual" = "$VERSION"
++
++          python3 - <<'PY'
++          import os
++          import re
++          from pathlib import Path
++
++          compose = Path("compose.yaml")
++          digest = os.environ["DIGEST"]
++          if not re.fullmatch(r"sha256:[a-f0-9]{64}", digest):
++              raise SystemExit("The published image has no valid digest")
++
++          app = "\n  app:\n    build: .\n"
++          original = compose.read_text()
++          if original.count(app) != 1:
++              raise SystemExit("Expected services.app.build: . in compose.yaml")
++          image = os.environ["IMAGE"]
++          compose.write_text(original.replace(app, f"\n  app:\n    image: {image}@{digest}\n", 1))
++          PY
++
++          export GIT_INDEX_FILE="$(git rev-parse --absolute-git-dir)/coolify-release-index"
++          git read-tree --empty
++          git add compose.yaml version.php
++          tree=$(git write-tree)
++          parents=()
++          if [[ -n "$PREVIOUS_RELEASE" ]]; then
++            parents=(-p "$PREVIOUS_RELEASE")
++          fi
++          commit=$(git commit-tree "$tree" "${parents[@]}" -m "Deploy Darmutiara v$VERSION ($GITHUB_SHA)")
++          git push origin "$commit:refs/heads/coolify-release"
+diff --git a/helpers/darmutiara-updates.php b/helpers/darmutiara-updates.php
+index 3ab4ae5..010711a 100644
+--- a/helpers/darmutiara-updates.php
++++ b/helpers/darmutiara-updates.php
+@@ -34,7 +34,7 @@ function darmutiaraUpdateRequest(string $url, ?string $token = null): array
+ function darmutiaraLatestVersion(): string
+ {
+     [$ok, $status, $body] = darmutiaraUpdateRequest(
+-        'https://raw.githubusercontent.com/muhamadsofyanar/darmutiarakajian/main/version.php?check=' . time()
++        'https://raw.githubusercontent.com/muhamadsofyanar/darmutiarakajian/coolify-release/version.php?check=' . time()
+     );
+     if (!$ok || $status !== 200
+         || !preg_match("/define\\(\\s*['\"]APP_VERSION['\"]\\s*,\\s*['\"](\\d+\\.\\d+\\.\\d+)['\"]\\s*\\)/", $body, $match)) {
