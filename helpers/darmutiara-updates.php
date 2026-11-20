@@ -7,6 +7,8 @@ function darmutiaraUpdateRequest(string $url, ?string $token = null): array
     $headers = ['Accept: application/json'];
     if ($token !== null) {
         $headers[] = 'Authorization: Bearer ' . $token;
+    } else {
+        $headers[] = 'Cache-Control: no-cache';
     }
     curl_setopt_array($curl, [
         CURLOPT_HTTPHEADER => $headers,
@@ -32,7 +34,7 @@ function darmutiaraUpdateRequest(string $url, ?string $token = null): array
 function darmutiaraLatestVersion(): string
 {
     [$ok, $status, $body] = darmutiaraUpdateRequest(
-        'https://raw.githubusercontent.com/muhamadsofyanar/darmutiarakajian/main/version.php'
+        'https://raw.githubusercontent.com/muhamadsofyanar/darmutiarakajian/main/version.php?check=' . time()
     );
     if (!$ok || $status !== 200
         || !preg_match("/define\\(\\s*['\"]APP_VERSION['\"]\\s*,\\s*['\"](\\d+\\.\\d+\\.\\d+)['\"]\\s*\\)/", $body, $match)) {
