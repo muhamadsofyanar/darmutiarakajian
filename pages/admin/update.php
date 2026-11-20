@@ -64,6 +64,7 @@ $partialUpdate = ($history[0]['status'] ?? '') === 'partial' ? $history[0] : nul
           <p class="text-2xl font-bold text-gray-900 dark:text-white mt-1">v<?= e(APP_VERSION) ?></p>
           <div class="flex flex-wrap items-center gap-3 mt-4">
             <a href="<?= e(APP_URL) ?>/admin/update?check=1" class="inline-flex rounded-lg px-4 py-2 font-semibold text-white" style="background-color:var(--brand-color)">Cek Update</a>
+            <a href="<?= e(APP_URL) ?>/admin/changelog" class="inline-flex rounded-lg border px-4 py-2 font-semibold text-gray-900 dark:text-white">Lihat Catatan Rilis</a>
             <?php if ($configured && !$pending && $latest !== null && version_compare($latest, APP_VERSION, '>')): ?>
             <form action="<?= e(APP_URL) ?>/actions/admin/apply-update" method="post">
               <input type="hidden" name="csrf_token" value="<?= e(generateCSRF()) ?>">
@@ -98,11 +99,6 @@ $partialUpdate = ($history[0]['status'] ?? '') === 'partial' ? $history[0] : nul
               <?php if (!empty($history)): ?>
               <span class="text-xs text-gray-400 dark:text-gray-600"><?= count($history) ?> terakhir</span>
               <?php endif; ?>
-              <a href="<?= e(APP_URL) ?>/admin/changelog"
-                 class="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--brand-color)] hover:opacity-80 transition">
-                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                Riwayat commit GitHub
-              </a>
             </div>
           </div>
           <?php if (empty($history)): ?>
