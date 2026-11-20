@@ -1,11 +1,12 @@
 name: darmutiara-staging
-
 services:
   app:
     build: .
     environment:
       DARMUTIARA_APP_URL: ${DARMUTIARA_APP_URL:-}
       DARMUTIARA_ISSUER_PUBLIC_KEY: ${DARMUTIARA_ISSUER_PUBLIC_KEY:-}
+      DARMUTIARA_DEPLOY_WEBHOOK: ${DARMUTIARA_DEPLOY_WEBHOOK:-}
+      DARMUTIARA_DEPLOY_TOKEN: ${DARMUTIARA_DEPLOY_TOKEN:-}
     expose:
       - "80"
     volumes:
@@ -16,7 +17,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-
   db:
     image: mariadb:10.11
     healthcheck:
@@ -31,7 +31,6 @@ services:
       MARIADB_ROOT_PASSWORD: '${DARMUTIARA_DB_ROOT_PASSWORD:?Isi password root MariaDB di .env}'
     volumes:
       - db_data:/var/lib/mysql
-
 volumes:
   app_config:
   app_uploads:

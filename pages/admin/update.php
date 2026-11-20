@@ -1,6 +1,23 @@
 <?php
 require_once __DIR__ . '/../../bootstrap.php';
 requireAdmin();
+require_once __DIR__ . '/../../helpers/darmutiara-updates.php';
+
+$latest = null;
+$error = null;
+if (($_GET['check'] ?? '') === '1') {
+    try {
+        $latest = darmutiaraLatestVersion();
+    } catch (RuntimeException $failure) {
+        $error = $failure->getMessage();
+    }
+}
+$configured = darmutiaraDeployConfig() !== null;
+$deploy = darmutiaraUpdateState();
+$requested = (string) ($deploy['version'] ?? '');
+$installed = $requested !== '' && version_compare(APP_VERSION, $requested, '>=');
+$pending = !$installed && $requested !== '' && ($deploy['status'] ?? '') !== 'rejected'
+    && (int) ($deploy['at'] ?? 0) > time() - 900;
 
 $pageTitle   = 'Update Sistem';
 $topbarTitle = 'Update Sistem';
@@ -45,11 +62,29 @@ $partialUpdate = ($history[0]['status'] ?? '') === 'partial' ? $history[0] : nul
         <section class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-5">
           <p class="text-sm text-gray-500 dark:text-gray-400">Versi terpasang</p>
           <p class="text-2xl font-bold text-gray-900 dark:text-white mt-1">v<?= e(APP_VERSION) ?></p>
-          <ol class="list-decimal pl-5 mt-4 space-y-1 text-sm text-gray-700 dark:text-gray-300">
-            <li>Unggah perubahan ke branch <code>main</code> di <a href="https://github.com/muhamadsofyanar/darmutiarakajian" class="underline font-semibold">repo Darmutiara Kajian</a>.</li>
-            <li>Buka resource Kajian di Coolify, lalu klik <strong>Deploy</strong>.</li>
-            <li>Cocokkan commit di log deploy dengan commit di GitHub.</li>
-          </ol>
+          <div class="flex flex-wrap items-center gap-3 mt-4">
+            <a href="<?= e(APP_URL) ?>/admin/update?check=1" class="inline-flex rounded-lg px-4 py-2 font-semibold text-white" style="background-color:var(--brand-color)">Cek Update</a>
+            <?php if ($configured && !$pending && $latest !== null && version_compare($latest, APP_VERSION, '>')): ?>
+            <form action="<?= e(APP_URL) ?>/actions/admin/apply-update" method="post">
+              <input type="hidden" name="csrf_token" value="<?= e(generateCSRF()) ?>">
+              <input type="hidden" name="version" value="<?= e($latest) ?>">
+              <button class="rounded-lg border px-4 py-2 font-semibold text-gray-900 dark:text-white">Pasang Update v<?= e($latest) ?></button>
+            </form>
+            <?php endif; ?>
+          </div>
+          <?php if (!$configured): ?>
+            <p class="text-sm text-gray-500 dark:text-gray-400 mt-3">Pengaturan deploy Coolify diperlukan untuk mengaktifkan tombol Pasang Update.</p>
+          <?php endif; ?>
+          <?php if ($error !== null): ?>
+            <p role="alert" class="mt-3 text-sm text-red-700 dark:text-red-400"><?= e($error) ?></p>
+          <?php elseif ($latest !== null): ?>
+            <p class="mt-3 text-sm text-gray-700 dark:text-gray-300"><?= version_compare($latest, APP_VERSION, '>') ? 'Versi v' . e($latest) . ' tersedia di GitHub.' : 'Versi terpasang sudah yang terbaru.' ?></p>
+          <?php endif; ?>
+          <?php if ($installed): ?>
+            <p class="mt-3 text-sm text-green-700 dark:text-green-400">Versi v<?= e($requested) ?> sudah terpasang.</p>
+          <?php elseif ($requested !== '' && ($deploy['status'] ?? '') !== 'rejected'): ?>
+            <p class="mt-3 text-sm text-gray-700 dark:text-gray-300">Versi v<?= e($requested) ?> belum terkonfirmasi. Lihat Deployments di Coolify untuk progres atau detail kegagalan.</p>
+          <?php endif; ?>
         </section>
         <?php if ($partialUpdate): ?>
         <p class="p-4 rounded-xl bg-yellow-50 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-300 text-sm" role="status">
