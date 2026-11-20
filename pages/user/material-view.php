@@ -464,10 +464,15 @@ function renderContent(array $mat): string
             $viewer = '';
             if (isset($mat['_pdf_url'])) {
                 $pdfUrl = e($mat['_pdf_url']);
-                $viewer = '<div class="w-full space-y-3">'
-                    . '<iframe class="block w-full rounded-xl border border-gray-200 dark:border-gray-700"'
-                    . ' style="height:clamp(28rem,72vh,64rem)" loading="lazy" title="' . e($mat['title']) . '"'
-                    . ' src="' . $pdfUrl . '"></iframe>'
+                $viewer = '<div class="w-full min-w-0 space-y-3" data-material-pdf="' . $pdfUrl . '">'
+                    . '<div class="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">'
+                    . '<canvas hidden role="img" style="width:100%;height:auto;vertical-align:top"></canvas></div>'
+                    . '<div class="flex flex-wrap items-center justify-between gap-2">'
+                    . '<div data-pdf-controls hidden><div class="flex flex-wrap gap-2">'
+                    . '<button type="button" data-pdf-prev class="rounded-lg border px-3 py-2 text-sm font-semibold disabled:opacity-50">Sebelumnya</button>'
+                    . '<button type="button" data-pdf-next class="rounded-lg border px-3 py-2 text-sm font-semibold disabled:opacity-50">Berikutnya</button>'
+                    . '</div></div>'
+                    . '<p data-pdf-status role="status" class="text-sm text-gray-500 dark:text-gray-400"></p></div>'
                     . '<a class="inline-flex font-semibold underline text-[var(--brand-color)]" href="' . $pdfUrl
                     . '" target="_blank" rel="noopener">Buka PDF di tab baru</a></div>';
             }
@@ -547,6 +552,9 @@ function renderContent(array $mat): string
 $totalMaterials = array_sum(array_map(fn($c) => count($c['materials']), $classes));
 ?>
 <?php include __DIR__ . '/../../partials/head.php'; ?>
+<?php if (isset($material['_pdf_url'])): ?>
+<script type="module" src="<?= e(rtrim(APP_URL, '/')) ?>/assets/js/material-pdf.mjs?v=<?= e(APP_VERSION) ?>"></script>
+<?php endif; ?>
 <style>
   /* Course nav sidebar transition */
   @media (max-width: 1023px) {

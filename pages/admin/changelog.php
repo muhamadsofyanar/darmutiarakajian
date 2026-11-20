@@ -7,6 +7,14 @@ $pageTitle = $topbarTitle = 'Catatan Rilis';
 // Tambahkan rilis baru di atas dan samakan versinya dengan version.php.
 $releases = [
     [
+        'version' => '1.2.266',
+        'title' => 'Tampilan PDF di layar HP',
+        'changes' => [
+            'Halaman PDF menyesuaikan lebar area materi agar sisi kanan dan kiri terlihat.',
+            'Beralih antarhalaman PDF langsung dari Area Member.',
+        ],
+    ],
+    [
         'version' => '1.2.265',
         'title' => 'Baca PDF langsung di Materi',
         'changes' => [
