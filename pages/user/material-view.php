@@ -464,20 +464,26 @@ function renderContent(array $mat): string
             $viewer = '';
             if (isset($mat['_pdf_url'])) {
                 $pdfUrl = e($mat['_pdf_url']);
-                $viewer = '<div class="w-full min-w-0 space-y-3" data-material-pdf="' . $pdfUrl . '">'
-                    . '<div class="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">'
-                    . '<canvas hidden role="img" style="width:100%;height:auto;vertical-align:top"></canvas></div>'
-                    . '<div class="flex flex-wrap items-center justify-between gap-2">'
-                    . '<div data-pdf-controls hidden><div class="flex flex-wrap gap-2">'
-                    . '<button type="button" data-pdf-prev class="rounded-lg border px-3 py-2 text-sm font-semibold disabled:opacity-50">Sebelumnya</button>'
-                    . '<button type="button" data-pdf-next class="rounded-lg border px-3 py-2 text-sm font-semibold disabled:opacity-50">Berikutnya</button>'
-                    . '</div></div>'
-                    . '<p data-pdf-status role="status" class="text-sm text-gray-500 dark:text-gray-400"></p></div>'
-                    . '<a class="inline-flex font-semibold underline text-[var(--brand-color)]" href="' . $pdfUrl
-                    . '" target="_blank" rel="noopener">Buka PDF di tab baru</a></div>';
+                $viewer = '<div class="w-full min-w-0">'
+                    . '<div class="material-pdf-reader" data-material-pdf="' . $pdfUrl . '">'
+                    . '<div class="material-pdf-frame">'
+                    . '<canvas hidden role="img"></canvas>'
+                    . '<p data-pdf-status role="status" class="p-2 text-sm text-gray-500 dark:text-gray-400"></p></div>'
+                    . '<div data-pdf-controls hidden><div class="material-pdf-toolbar">'
+                    . '<button type="button" data-pdf-prev aria-label="Halaman sebelumnya"><span aria-hidden="true">‹</span></button>'
+                    . '<form data-pdf-jump class="material-pdf-jump" aria-label="Lompat ke halaman">'
+                    . '<input type="number" aria-label="Nomor halaman" min="1" step="1" inputmode="numeric" enterkeyhint="go" required>'
+                    . '<span aria-hidden="true">/ <span data-pdf-total></span></span></form>'
+                    . '<button type="button" data-pdf-next aria-label="Halaman berikutnya"><span aria-hidden="true">›</span></button>'
+                    . '<button type="button" data-pdf-fullscreen hidden aria-label="Layar penuh" title="Layar penuh">'
+                    . '<span aria-hidden="true">⛶</span></button>'
+                    . '</div></div></div>'
+                    . '<dialog class="material-pdf-dialog" data-pdf-dialog aria-label="Penampil PDF layar penuh"></dialog>'
+                    . '<div class="material-pdf-extra mt-3"><a class="inline-flex font-semibold underline text-[var(--brand-color)]" href="' . $pdfUrl
+                    . '" target="_blank" rel="noopener">Buka PDF di tab baru</a></div></div>';
             }
             return $viewer . '
-        <div class="flex items-center justify-center ' . ($viewer === '' ? 'py-16' : 'pt-4') . '">
+        <div class="flex items-center justify-center ' . ($viewer === '' ? 'py-16' : 'material-pdf-extra py-4') . '">
           <button type="button" data-material-download="' . (int) $dl['id'] . '"
              class="group flex flex-col items-center gap-5 p-10 rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-700 hover:border-[var(--brand-color)] transition-colors max-w-sm w-full text-center disabled:opacity-60 disabled:cursor-wait">
             <div class="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-gray-800 group-hover:bg-[color-mix(in_srgb,var(--brand-color)_10%,transparent)] flex items-center justify-center transition-colors">
@@ -556,6 +562,81 @@ $totalMaterials = array_sum(array_map(fn($c) => count($c['materials']), $classes
 <script type="module" src="<?= e(rtrim(APP_URL, '/')) ?>/assets/js/material-pdf.mjs?v=<?= e(APP_VERSION) ?>"></script>
 <?php endif; ?>
 <style>
+  .material-pdf-frame {
+    display: grid;
+    min-width: 0;
+    place-items: center;
+  }
+  .material-pdf-frame canvas {
+    max-width: 100%;
+    height: auto;
+    vertical-align: top;
+  }
+  .material-pdf-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding-block: 4px;
+  }
+  .material-pdf-toolbar button, .material-pdf-jump input {
+    border: 1px solid currentColor;
+    border-radius: 8px;
+  }
+  .material-pdf-toolbar button {
+    width: 44px;
+    min-height: 44px;
+    font-size: 24px;
+    line-height: 1;
+  }
+  .material-pdf-toolbar button:disabled { opacity: .35; }
+  .material-pdf-jump {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+  }
+  .material-pdf-jump input {
+    width: 52px;
+    min-height: 44px;
+    padding-inline: 2px;
+    color: inherit;
+    background: transparent;
+    font-size: 16px;
+    text-align: center;
+    appearance: textfield;
+  }
+  .material-pdf-jump input::-webkit-inner-spin-button { appearance: none; }
+  .material-pdf-dialog[open] {
+    box-sizing: border-box;
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    height: 100dvh;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    padding: max(4px, env(safe-area-inset-top)) max(4px, env(safe-area-inset-right))
+             max(4px, env(safe-area-inset-bottom)) max(4px, env(safe-area-inset-left));
+    overflow: hidden;
+    color: #111827;
+    background: #f3f4f6;
+  }
+  .dark .material-pdf-dialog[open] { color: #f9fafb; background: #111827; }
+  .material-pdf-dialog .material-pdf-reader {
+    display: grid;
+    height: 100%;
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+  .material-pdf-dialog .material-pdf-frame { min-height: 0; overflow: hidden; }
+
+  @media (max-width: 639px) {
+    .material-pdf-card { margin-inline: -8px; }
+    .material-pdf-card .material-content { padding: 4px 0 0; }
+    .material-pdf-card .material-pdf-extra { padding-inline: 12px; }
+  }
+
   /* Course nav sidebar transition */
   @media (max-width: 1023px) {
     #courseNav { transition: transform 0.3s ease; }
@@ -847,8 +928,8 @@ $totalMaterials = array_sum(array_map(fn($c) => count($c['materials']), $classes
       </div>
 
       <!-- Content card -->
-      <div class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden mb-6">
-        <div class="p-6">
+      <div class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden mb-6<?= isset($material['_pdf_url']) ? ' material-pdf-card' : '' ?>">
+        <div class="material-content p-6">
           <?= renderContent($material) ?>
           <?php
           // Deskripsi kaya di bawah konten (teks + link, mis. prompt/tautan tool).
@@ -857,7 +938,7 @@ $totalMaterials = array_sum(array_map(fn($c) => count($c['materials']), $classes
           if ($matDesc !== ''):
               $matDescOut = preg_replace('/<a (?![^>]*\btarget=)/i', '<a target="_blank" rel="noopener" ', $matDesc);
           ?>
-          <div class="material-html mt-5 pt-5 border-t border-gray-100 dark:border-gray-800 text-gray-700 dark:text-gray-300 text-sm leading-relaxed [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-lg [&_a]:text-[var(--brand-color)] [&_a]:underline [&_a]:break-words [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_h2]:text-lg [&_h2]:font-bold [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1.5 [&_p]:mb-2 [&_blockquote]:border-l-4 [&_blockquote]:border-gray-200 [&_blockquote]:pl-3 [&_blockquote]:italic">
+          <div class="material-pdf-extra material-html mt-5 pt-5 border-t border-gray-100 dark:border-gray-800 text-gray-700 dark:text-gray-300 text-sm leading-relaxed [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-lg [&_a]:text-[var(--brand-color)] [&_a]:underline [&_a]:break-words [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_h2]:text-lg [&_h2]:font-bold [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1.5 [&_p]:mb-2 [&_blockquote]:border-l-4 [&_blockquote]:border-gray-200 [&_blockquote]:pl-3 [&_blockquote]:italic">
             <?= $matDescOut ?>
           </div>
           <?php endif; ?>
