@@ -146,11 +146,60 @@ try {
     $material['_download'] = null;
     if (($material['content_type'] ?? '') === 'file' && !empty($material['download_id'])) {
         $dStmt = $pdo->prepare(
-            "SELECT id, title, filename_orig, file_size FROM product_downloads
+            "SELECT id, title, filename_orig, filename_stor, mime_type, file_size FROM product_downloads
              WHERE id = ? AND status = 'active' LIMIT 1"
         );
         $dStmt->execute([(int) $material['download_id']]);
         $material['_download'] = $dStmt->fetch() ?: null;
+    }
+
+    $download = $material['_download'];
+    $isActiveClass = in_array((int) $material['class_id'], array_map('intval', array_column($rawClasses, 'id')), true);
+    $isPdf = $isActiveClass && ($download['mime_type'] ?? '') === 'application/pdf';
+
+    // Serve the protected PDF through the same material access and drip checks.
+    if (($_GET['view'] ?? '') === 'pdf') {
+        $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+        if (!in_array($method, ['GET', 'HEAD'], true)) {
+            header('Allow: GET, HEAD');
+            http_response_code(405);
+            exit;
+        }
+
+        $storage = $isPdf ? realpath(DOWNLOAD_STORAGE_PATH) : false;
+        $path = $storage !== false
+            ? realpath($storage . DIRECTORY_SEPARATOR . $download['filename_stor'])
+            : false;
+        if ($path === false || dirname($path) !== $storage || !is_file($path)) {
+            http_response_code(404);
+            exit;
+        }
+        $handle = @fopen($path, 'rb');
+        if ($handle === false) {
+            http_response_code(404);
+            exit;
+        }
+
+        $stat = fstat($handle);
+        session_write_close();
+        header('Content-Type: application/pdf');
+        header("Content-Disposition: inline; filename=ebook.pdf; filename*=UTF-8''"
+            . rawurlencode($download['filename_orig']));
+        header('Cache-Control: private, no-store');
+        header('X-Content-Type-Options: nosniff');
+        header('Accept-Ranges: none');
+        if ($stat !== false) {
+            header('Content-Length: ' . $stat['size']);
+        }
+        if ($method === 'GET') {
+            fpassthru($handle);
+        }
+        fclose($handle);
+        exit;
+    }
+
+    if ($isPdf) {
+        $material['_pdf_url'] = rtrim(APP_URL, '/') . $ownerBase . '/material/' . $materialId . '?view=pdf';
     }
 
     // Lampiran materi (material_files → Download Manager) — berlaku semua tipe.
@@ -412,8 +461,18 @@ function renderContent(array $mat): string
         if ($dl) {
             $fname = htmlspecialchars($dl['filename_orig'], ENT_QUOTES, 'UTF-8');
             $fsize = formatFileSize((int) $dl['file_size']);
-            return '
-        <div class="flex items-center justify-center py-16">
+            $viewer = '';
+            if (isset($mat['_pdf_url'])) {
+                $pdfUrl = e($mat['_pdf_url']);
+                $viewer = '<div class="w-full space-y-3">'
+                    . '<iframe class="block w-full rounded-xl border border-gray-200 dark:border-gray-700"'
+                    . ' style="height:clamp(28rem,72vh,64rem)" loading="lazy" title="' . e($mat['title']) . '"'
+                    . ' src="' . $pdfUrl . '"></iframe>'
+                    . '<a class="inline-flex font-semibold underline text-[var(--brand-color)]" href="' . $pdfUrl
+                    . '" target="_blank" rel="noopener">Buka PDF di tab baru</a></div>';
+            }
+            return $viewer . '
+        <div class="flex items-center justify-center ' . ($viewer === '' ? 'py-16' : 'pt-4') . '">
           <button type="button" data-material-download="' . (int) $dl['id'] . '"
              class="group flex flex-col items-center gap-5 p-10 rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-700 hover:border-[var(--brand-color)] transition-colors max-w-sm w-full text-center disabled:opacity-60 disabled:cursor-wait">
             <div class="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-gray-800 group-hover:bg-[color-mix(in_srgb,var(--brand-color)_10%,transparent)] flex items-center justify-center transition-colors">

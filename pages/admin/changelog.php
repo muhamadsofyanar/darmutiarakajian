@@ -7,6 +7,14 @@ $pageTitle = $topbarTitle = 'Catatan Rilis';
 // Tambahkan rilis baru di atas dan samakan versinya dengan version.php.
 $releases = [
     [
+        'version' => '1.2.265',
+        'title' => 'Baca PDF langsung di Materi',
+        'changes' => [
+            'Materi PDF terproteksi bisa dibaca di Area Member atau dibuka di tab baru.',
+            'Tombol unduh PDF tetap tersedia pada halaman materi.',
+        ],
+    ],
+    [
         'version' => '1.2.264',
         'title' => 'Catatan rilis di dalam aplikasi',
         'changes' => [
