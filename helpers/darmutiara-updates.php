@@ -34,7 +34,7 @@ function darmutiaraUpdateRequest(string $url, ?string $token = null): array
 function darmutiaraLatestVersion(): string
 {
     [$ok, $status, $body] = darmutiaraUpdateRequest(
-        'https://raw.githubusercontent.com/muhamadsofyanar/darmutiarakajian/main/version.php?check=' . time()
+        'https://raw.githubusercontent.com/muhamadsofyanar/darmutiarakajian/coolify-release/version.php?check=' . time()
     );
     if (!$ok || $status !== 200
         || !preg_match("/define\\(\\s*['\"]APP_VERSION['\"]\\s*,\\s*['\"](\\d+\\.\\d+\\.\\d+)['\"]\\s*\\)/", $body, $match)) {
