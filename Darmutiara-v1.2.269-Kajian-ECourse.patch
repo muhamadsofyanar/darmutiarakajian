@@ -1,0 +1,220 @@
+From d3cf4fbdaf0e8ef5a6791cca0ca0e2997ead1dc0 Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Sat, 21 Nov 2026 08:35:59 +0700
+Subject: [PATCH] Hubungkan jadwal Kajian dengan e-course
+
+---
+ pages/admin/changelog.php        |  9 +++++++
+ pages/darmutiara/kajian-view.php | 18 +++++++++++---
+ pages/darmutiara/kajian.php      | 42 +++++++++++++++++++++++++++++---
+ pages/user/class-detail.php      | 32 ++++++++++++++++++++++++
+ version.php                      |  2 +-
+ 5 files changed, 96 insertions(+), 7 deletions(-)
+
+diff --git a/pages/admin/changelog.php b/pages/admin/changelog.php
+index ec438b7..f7367d5 100644
+--- a/pages/admin/changelog.php
++++ b/pages/admin/changelog.php
+@@ -6,6 +6,15 @@ $pageTitle = $topbarTitle = 'Catatan Rilis';
+ 
+ // Tambahkan rilis baru di atas dan samakan versinya dengan version.php.
+ $releases = [
++    [
++        'version' => '1.2.269',
++        'title' => 'Jadwal Kajian terhubung dengan e-course',
++        'changes' => [
++            'Anggota bisa membuka materi e-course dari detail kajian yang terkait dengan produk kelas.',
++            'Halaman e-course menampilkan jadwal kajian berikutnya untuk program tersebut.',
++            'Jadwal anggota menampilkan kajian mendatang, riwayat, dan status pendaftaran.',
++        ],
++    ],
+     [
+         'version' => '1.2.268',
+         'title' => 'Pengecekan versi terbaru',
+diff --git a/pages/darmutiara/kajian-view.php b/pages/darmutiara/kajian-view.php
+index c44315b..9e1c11f 100644
+--- a/pages/darmutiara/kajian-view.php
++++ b/pages/darmutiara/kajian-view.php
+@@ -78,6 +78,7 @@ require $root . 'partials/head.php';
+                         </option>
+                       <?php endforeach; ?>
+                     </select>
++                    <span class="mt-1 block text-sm text-gray-600 dark:text-gray-400">Pilih produk e-course untuk menghubungkan jadwal ini dengan kelasnya.</span>
+                   </label>
+                 </div>
+                 <label class="flex items-center gap-2">
+@@ -90,20 +91,28 @@ require $root . 'partials/head.php';
+           <?php endif; ?>
+ 
+           <?php if (!$event): ?>
++            <?php
++            $eventGroups = $admin
++                ? ['Daftar Kajian' => $events]
++                : ['Kajian Mendatang' => $upcomingEvents, 'Kajian Sebelumnya' => $pastEvents];
++            ?>
++            <?php foreach ($eventGroups as $groupTitle => $items): ?>
+             <section class="<?= $panelClass ?>">
+-              <h2 class="mb-3 text-lg font-bold">Daftar Kajian</h2>
+-              <?php if (!$events): ?><p>Belum ada kajian yang tersedia.</p><?php endif; ?>
++              <h2 class="mb-3 text-lg font-bold"><?= e($groupTitle) ?></h2>
++              <?php if (!$items): ?><p>Belum ada kajian.</p><?php endif; ?>
+               <ul class="divide-y divide-gray-200 dark:divide-gray-800">
+-                <?php foreach ($events as $item): ?>
++                <?php foreach ($items as $item): ?>
+                   <li class="py-3">
+                     <a class="<?= $linkClass ?>" href="<?= e($listUrl . '?id=' . (int) $item['id']) ?>"><?= e($item['title']) ?></a>
+                     <p class="mt-1 text-sm"><?= e($item['speaker']) ?> · <?= e($formatDate($item['starts_at'])) ?>
+                       <?php if ($admin): ?> · <?= $item['published'] ? 'Terbit' : 'Draf' ?><?php endif; ?>
++                      <?php if (!$admin && $item['registered']): ?> · Terdaftar<?php endif; ?>
+                     </p>
+                   </li>
+                 <?php endforeach; ?>
+               </ul>
+             </section>
++            <?php endforeach; ?>
+           <?php elseif ($admin): ?>
+             <section class="<?= $panelClass ?>">
+               <h2 class="mb-3 text-lg font-bold">Peserta (<?= count($participants) ?>)</h2>
+@@ -117,6 +126,9 @@ require $root . 'partials/head.php';
+               <h2 class="text-lg font-bold"><?= e($event['title']) ?></h2>
+               <p><?= e($event['speaker']) ?> · <?= e($formatDate($event['starts_at'])) ?></p>
+               <?php if ($event['location'] !== ''): ?><p><?= e($event['location']) ?></p><?php endif; ?>
++              <?php if ($courseUrl !== null): ?>
++                <p><a class="<?= $linkClass ?>" href="<?= e($courseUrl) ?>">Buka Materi E-course</a></p>
++              <?php endif; ?>
+               <?php if ($registered): ?>
+                 <p class="text-sm font-medium">Anda sudah terdaftar.</p>
+                 <div class="flex flex-wrap gap-4">
+diff --git a/pages/darmutiara/kajian.php b/pages/darmutiara/kajian.php
+index f107b65..1b7bfdc 100644
+--- a/pages/darmutiara/kajian.php
++++ b/pages/darmutiara/kajian.php
+@@ -18,10 +18,13 @@ $userId = (int) $_SESSION['user_id'];
+ $preview = !empty($_SESSION['impersonating']);
+ $csrf = generateCSRF();
+ $timezone = new DateTimeZone('Asia/Jakarta');
++$now = (new DateTimeImmutable('now', $timezone))->format('Y-m-d H:i:s');
+ $isPost = ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST';
+ $event = null;
+ $events = $posts = $products = $participants = [];
++$upcomingEvents = $pastEvents = [];
+ $registered = false;
++$courseUrl = null;
+ $pageError = '';
+ 
+ function darmutiaraField(string $name): string
+@@ -97,6 +100,21 @@ try {
+         if (!$isPost && $registered && ($_GET['calendar'] ?? '') === '1') {
+             darmutiaraKajianCalendar($event, $timezone);
+         }
++        if (!$isPost && $event['product_id'] !== null) {
++            $stmt = $pdo->prepare("SELECT 1 FROM products p
++                WHERE p.id = ? AND p.access_type = 'course'
++                AND EXISTS (
++                    SELECT 1 FROM classes c
++                    JOIN materials m ON m.class_id = c.id
++                    WHERE c.status = 'active' AND (c.product_id = p.id OR EXISTS (
++                        SELECT 1 FROM class_products cp WHERE cp.class_id = c.id AND cp.product_id = p.id
++                    ))
++                )");
++            $stmt->execute([$event['product_id']]);
++            if ($stmt->fetchColumn()) {
++                $courseUrl = rtrim(APP_URL, '/') . '/member/' . (int) $event['product_id'];
++            }
++        }
+     }
+ 
+     if ($isPost) {
+@@ -170,9 +188,27 @@ try {
+     if (!$event) {
+         $query = 'SELECT k.id, k.title, k.speaker, k.starts_at, k.published, k.product_id,
+             EXISTS(SELECT 1 FROM products WHERE id = k.product_id) AS product_exists FROM darmutiara_kajian k';
+-        $events = $pdo->query($query . ($admin ? '' : ' WHERE published = 1') . ' ORDER BY starts_at DESC, id DESC')->fetchAll();
+-        if (!$admin) {
+-            $events = array_filter($events, fn (array $row): bool => darmutiaraKajianAccess($row, $userId));
++        if ($admin) {
++            $events = $pdo->query($query . ' ORDER BY starts_at DESC, id DESC')->fetchAll();
++        } else {
++            $stmt = $pdo->prepare('SELECT k.id, k.title, k.speaker, k.starts_at, k.published, k.product_id,
++                p.id IS NOT NULL AS product_exists, r.user_id IS NOT NULL AS registered
++                FROM darmutiara_kajian k
++                LEFT JOIN products p ON p.id = k.product_id
++                LEFT JOIN darmutiara_kajian_participants r ON r.kajian_id = k.id AND r.user_id = ?
++                WHERE k.published = 1 ORDER BY k.starts_at DESC, k.id DESC');
++            $stmt->execute([$userId]);
++            foreach ($stmt->fetchAll() as $row) {
++                if (!darmutiaraKajianAccess($row, $userId)) {
++                    continue;
++                }
++                if ($row['starts_at'] >= $now) {
++                    $upcomingEvents[] = $row;
++                } else {
++                    $pastEvents[] = $row;
++                }
++            }
++            $upcomingEvents = array_reverse($upcomingEvents);
+         }
+     }
+     if ($event && ($admin || $registered)) {
+diff --git a/pages/user/class-detail.php b/pages/user/class-detail.php
+index 19e2453..c4b1ac4 100644
+--- a/pages/user/class-detail.php
++++ b/pages/user/class-detail.php
+@@ -143,6 +143,23 @@ try {
+ $pageTitle   = $product['name'];
+ $topbarTitle = $product['name'];
+ 
++$upcomingKajian = [];
++$kajianTimezone = new DateTimeZone('Asia/Jakarta');
++if (!$previewMode && $ownerType === 'product') {
++    try {
++        $stmt = $pdo->prepare('SELECT id, title, starts_at FROM darmutiara_kajian
++            WHERE product_id = ? AND published = 1 AND starts_at >= ?
++            ORDER BY starts_at ASC, id ASC LIMIT 5');
++        $stmt->execute([$productId, (new DateTimeImmutable('now', $kajianTimezone))->format('Y-m-d H:i:s')]);
++        $upcomingKajian = $stmt->fetchAll();
++    } catch (PDOException $error) {
++        // Instalasi lama bisa membuka materi sebelum migrasi Kajian dipasang.
++        if ($error->getCode() !== '42S02') {
++            error_log('Class detail Kajian: ' . $error->getMessage());
++        }
++    }
++}
++
+ // Thumbnail bisa tersimpan sebagai path relatif (mis. assets/uploads/...). Jadikan
+ // absolut agar tetap tampil di route dalam seperti /member/lm/7 (path relatif akan
+ // keliru resolve ke /member/lm/assets/...). URL http(s) penuh dibiarkan apa adanya.
+@@ -231,6 +248,21 @@ $iconForType = function(string $type): string {
+           <?php endif; ?>
+         </div>
+ 
++        <?php if ($upcomingKajian): ?>
++        <section class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-5 mb-5">
++          <h2 class="font-bold text-gray-900 dark:text-white">Kajian Mendatang</h2>
++          <ul class="mt-2 divide-y divide-gray-200 dark:divide-gray-800">
++            <?php foreach ($upcomingKajian as $session): ?>
++            <li class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2">
++              <a class="font-semibold text-[var(--brand-color)] underline"
++                 href="<?= e(rtrim(APP_URL, '/') . '/kajian?id=' . (int) $session['id']) ?>"><?= e($session['title']) ?></a>
++              <span class="text-sm text-gray-600 dark:text-gray-400"><?= e((new DateTimeImmutable($session['starts_at'], $kajianTimezone))->format('d/m/Y H:i')) ?> WIB</span>
++            </li>
++            <?php endforeach; ?>
++          </ul>
++        </section>
++        <?php endif; ?>
++
+         <!-- Category Filter (shown only when multiple categories exist) -->
+         <?php
+         $uniqueCategories = [];
+diff --git a/version.php b/version.php
+index c7cae6b..5b5ea6c 100644
+--- a/version.php
++++ b/version.php
+@@ -1,3 +1,3 @@
+ <?php
+ // Naikkan versi bersama catatan rilis saat menerbitkan update.
+-define('APP_VERSION', '1.2.268');
++define('APP_VERSION', '1.2.269');
+-- 
+2.56.1
+
