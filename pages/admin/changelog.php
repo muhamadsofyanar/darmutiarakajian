@@ -7,6 +7,13 @@ $pageTitle = $topbarTitle = 'Catatan Rilis';
 // Tambahkan rilis baru di atas dan samakan versinya dengan version.php.
 $releases = [
     [
+        'version' => '1.2.268',
+        'title' => 'Pengecekan versi terbaru',
+        'changes' => [
+            'Cek Update membaca versi rilis dari API GitHub terlebih dahulu agar rilis terbaru lebih cepat terdeteksi.',
+        ],
+    ],
+    [
         'version' => '1.2.267',
         'title' => 'Ruang baca PDF lebih luas di HP',
         'changes' => [

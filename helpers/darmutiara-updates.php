@@ -31,16 +31,37 @@ function darmutiaraUpdateRequest(string $url, ?string $token = null): array
     return [$ok !== false, $status, $body];
 }
 
+function darmutiaraParseVersion(string $body): ?string
+{
+    return preg_match("/define\\(\\s*['\"]APP_VERSION['\"]\\s*,\\s*['\"](\\d+\\.\\d+\\.\\d+)['\"]\\s*\\)/", $body, $match) ? $match[1] : null;
+}
+
 function darmutiaraLatestVersion(): string
 {
+    $check = time();
     [$ok, $status, $body] = darmutiaraUpdateRequest(
-        'https://raw.githubusercontent.com/muhamadsofyanar/darmutiarakajian/coolify-release/version.php?check=' . time()
+        'https://api.github.com/repos/muhamadsofyanar/darmutiarakajian/contents/version.php?ref=coolify-release&check=' . $check
     );
-    if (!$ok || $status !== 200
-        || !preg_match("/define\\(\\s*['\"]APP_VERSION['\"]\\s*,\\s*['\"](\\d+\\.\\d+\\.\\d+)['\"]\\s*\\)/", $body, $match)) {
+    if ($ok && $status === 200) {
+        $file = json_decode($body, true);
+        if (is_array($file) && ($file['encoding'] ?? null) === 'base64' && is_string($file['content'] ?? null)) {
+            $contents = base64_decode($file['content'], true);
+            $version = $contents === false ? null : darmutiaraParseVersion($contents);
+            if ($version !== null) {
+                return $version;
+            }
+        }
+    }
+
+    // Public GitHub API requests may be rate-limited. Keep the direct file as a fallback.
+    [$ok, $status, $body] = darmutiaraUpdateRequest(
+        'https://raw.githubusercontent.com/muhamadsofyanar/darmutiarakajian/coolify-release/version.php?check=' . $check
+    );
+    $version = $ok && $status === 200 ? darmutiaraParseVersion($body) : null;
+    if ($version === null) {
         throw new RuntimeException('Versi terbaru belum bisa dibaca dari GitHub.');
     }
-    return $match[1];
+    return $version;
 }
 
 function darmutiaraDeployConfig(): ?array
