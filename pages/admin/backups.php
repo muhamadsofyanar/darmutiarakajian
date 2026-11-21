@@ -9,7 +9,9 @@ $backups      = listDbBackups();
 $backupDir    = dbBackupDir();
 $enabled      = getSetting('db_backup_enabled', '1') === '1';
 $retention    = (int) (getSetting('db_backup_retention_days', '7') ?: 7);
-$lastRun      = (int) (getSetting('db_backup_last_run', '0') ?: 0);
+$lastAutoFile = getSetting('db_backup_last_file', '');
+$backupTimes = array_column($backups, 'mtime', 'name');
+$lastRun = $backupTimes[$lastAutoFile] ?? null;
 $totalSize    = array_sum(array_column($backups, 'size'));
 $dirInWebroot = $backupDir !== null && strpos($backupDir, dirname(__DIR__, 2) . DIRECTORY_SEPARATOR) === 0;
 
@@ -93,7 +95,11 @@ $csrf = generateCSRF();
               Lokasi: <span class="font-mono"><?= e($backupDir) ?></span>
               <?= $dirInWebroot ? ' <strong>(di dalam webroot — dilindungi .htaccess)</strong>' : ' (di luar webroot — aman dari akses browser)' ?>.
               Total <?= count($backups) ?> file &middot; <?= e($fmtSize($totalSize)) ?>.
-              <?php if ($lastRun > 0): ?> Backup otomatis terakhir: <?= e(date('d M Y H:i', $lastRun)) ?>.<?php endif; ?>
+              <?php if ($lastRun !== null): ?>
+                Backup otomatis terakhir berhasil: <?= e(date('d M Y H:i', $lastRun)) ?>.
+              <?php elseif ($enabled): ?>
+                Cadangan otomatis terakhir belum terverifikasi.
+              <?php endif; ?>
               Backup di server yang sama tidak melindungi dari kehilangan server total — unduh salinannya secara berkala.
             <?php else: ?>
               Folder backup tidak bisa dibuat/ditulis. Periksa permission folder <span class="font-mono">backups/</span> di hosting kamu.

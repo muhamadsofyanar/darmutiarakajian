@@ -11,11 +11,30 @@
 function cronHeartbeat(string $source): void
 {
     try {
-        setSetting('cron_last_heartbeat', (string) time(), 'system');
+        $now = (string) time();
+        setSetting('cron_last_heartbeat', $now, 'system');
+        if ($source === 'cron') setSetting('cron_last_external', $now, 'system');
         setSetting('cron_last_source', $source, 'system');
     } catch (Throwable $e) {
         error_log('cronHeartbeat error: ' . $e->getMessage());
     }
+}
+
+/**
+ * Cegah dua proses cron berjalan bersamaan dalam container.
+ * Resource ditahan selama worker berjalan dan dilepas saat proses berhenti.
+ */
+function acquireContainerCronLock()
+{
+    $lock = fopen('/data/darmutiara-cron.lock', 'c');
+    if ($lock === false) {
+        throw new RuntimeException('File lock cron tidak bisa dibuka.');
+    }
+    if (!flock($lock, LOCK_EX | LOCK_NB)) {
+        fclose($lock);
+        return null;
+    }
+    return $lock;
 }
 
 /**

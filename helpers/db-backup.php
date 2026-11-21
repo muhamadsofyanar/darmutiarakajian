@@ -2,7 +2,6 @@
 // ─── Auto-Backup Database ──────────────────────────────────────
 // Diekstrak dari helpers.php (pemecahan monolit — memori helpers-split-plan).
 // Dimuat via bootstrap.php ($__averionCoreFiles, SETELAH helpers.php).
-// Behavior-preserving: pindah utuh, tanpa ubah signature/logika.
 // Dump pure-PHP (tanpa exec/mysqldump — aman di shared hosting), gzip,
 // disimpan di folder backup DI LUAR webroot (konvensi UPDATE_BACKUP_PATH),
 // fallback ke dalam aplikasi dengan .htaccess deny. Jadwal harian via Auto-Cron.
@@ -45,15 +44,30 @@ function createDbBackup(): array
     }
 
     $file = $dir . DIRECTORY_SEPARATOR . 'averion-db-' . date('Ymd-His') . '-' . substr(bin2hex(random_bytes(4)), 0, 6) . '.sql.gz';
-    $gz   = gzopen($file, 'wb6');
-    if ($gz === false) {
-        return ['success' => false, 'message' => 'Gagal membuat file backup.'];
+    $partial = tempnam($dir, '.backup-');
+    if ($partial === false || dirname($partial) !== realpath($dir)) {
+        if ($partial !== false) @unlink($partial);
+        return ['success' => false, 'message' => 'Gagal membuat file backup di folder penyimpanan.'];
     }
+    $gz = null;
+    $snapshotOpen = false;
 
     try {
+        $gz = gzopen($partial, 'wb6');
+        if ($gz === false) {
+            throw new RuntimeException('File backup tidak bisa dibuka.');
+        }
+        $write = static function (string $data) use ($gz): void {
+            if (gzwrite($gz, $data) !== strlen($data)) {
+                throw new RuntimeException('Gagal menulis file backup.');
+            }
+        };
         $pdo = getDB();
-        gzwrite($gz, "-- Averion Database Backup\n-- Dibuat  : " . date('Y-m-d H:i:s') . "\n-- Versi   : " . (defined('APP_VERSION') ? APP_VERSION : '-') . "\n\n");
-        gzwrite($gz, "SET NAMES utf8mb4;\nSET FOREIGN_KEY_CHECKS=0;\n\n");
+        $pdo->exec('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+        $pdo->beginTransaction();
+        $snapshotOpen = true;
+        $write("-- Averion Database Backup\n-- Dibuat  : " . date('Y-m-d H:i:s') . "\n-- Versi   : " . (defined('APP_VERSION') ? APP_VERSION : '-') . "\n\n");
+        $write("SET NAMES utf8mb4;\nSET FOREIGN_KEY_CHECKS=0;\n\n");
 
         $tables = [];
         foreach ($pdo->query('SHOW FULL TABLES')->fetchAll(PDO::FETCH_NUM) as $row) {
@@ -62,12 +76,13 @@ function createDbBackup(): array
 
         $rowTotal = 0;
         foreach ($tables as $tbl) {
-            $create = $pdo->query('SHOW CREATE TABLE `' . str_replace('`', '``', $tbl) . '`')->fetch(PDO::FETCH_NUM);
-            gzwrite($gz, "DROP TABLE IF EXISTS `$tbl`;\n" . $create[1] . ";\n\n");
+            $table = '`' . str_replace('`', '``', $tbl) . '`';
+            $create = $pdo->query('SHOW CREATE TABLE ' . $table)->fetch(PDO::FETCH_NUM);
+            $write("DROP TABLE IF EXISTS $table;\n" . $create[1] . ";\n\n");
 
             $chunk = 1000; $offset = 0;
             while (true) {
-                $stmt = $pdo->query('SELECT * FROM `' . str_replace('`', '``', $tbl) . "` LIMIT $chunk OFFSET $offset");
+                $stmt = $pdo->query("SELECT * FROM $table LIMIT $chunk OFFSET $offset");
                 $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 if (!$rows) break;
 
@@ -80,16 +95,25 @@ function createDbBackup(): array
                     $values[] = '(' . implode(',', $vals) . ')';
                     $rowTotal++;
                 }
-                gzwrite($gz, "INSERT INTO `$tbl` VALUES\n" . implode(",\n", $values) . ";\n");
+                $write("INSERT INTO $table VALUES\n" . implode(",\n", $values) . ";\n");
 
                 if (count($rows) < $chunk) break;
                 $offset += $chunk;
             }
-            gzwrite($gz, "\n");
+            $write("\n");
         }
 
-        gzwrite($gz, "SET FOREIGN_KEY_CHECKS=1;\n");
-        gzclose($gz);
+        $write("SET FOREIGN_KEY_CHECKS=1;\n");
+        $closed = gzclose($gz);
+        $gz = null;
+        if (!$closed) {
+            throw new RuntimeException('File backup tidak bisa ditutup dengan lengkap.');
+        }
+        $pdo->commit();
+        $snapshotOpen = false;
+        if (!rename($partial, $file)) {
+            throw new RuntimeException('File backup tidak bisa disimpan.');
+        }
 
         return [
             'success'  => true,
@@ -101,8 +125,9 @@ function createDbBackup(): array
             'duration' => round(microtime(true) - $t0, 2),
         ];
     } catch (Throwable $e) {
-        @gzclose($gz);
-        @unlink($file);
+        if ($snapshotOpen && $pdo->inTransaction()) $pdo->rollBack();
+        if (is_resource($gz)) gzclose($gz);
+        @unlink($partial);
         error_log('createDbBackup error: ' . $e->getMessage());
         return ['success' => false, 'message' => 'Backup gagal: ' . $e->getMessage()];
     }
@@ -134,41 +159,41 @@ function pruneDbBackups(int $days): int
     return $n;
 }
 
-/**
- * Backup harian otomatis (Auto-Cron / cron asli). Klaim optimistik lewat baris
- * settings db_backup_last_run (UPDATE ... WHERE value = nilai-lama, rowCount 1
- * = menang) → aman dijalankan paralel tanpa backup dobel.
- */
+/** Backup harian otomatis melalui cron atau Auto-Cron. */
 function processDbBackups(): array
 {
     $result = ['created' => 0, 'pruned' => 0];
+    if (getSetting('db_backup_enabled', '1') !== '1') return $result;
+
+    $dir = dbBackupDir();
+    if ($dir === null) {
+        error_log('processDbBackups: folder backup tidak bisa ditulis.');
+        return $result;
+    }
+    $lock = fopen($dir . DIRECTORY_SEPARATOR . '.auto-backup.lock', 'c');
+    if ($lock === false) return $result;
     try {
-        if (getSetting('db_backup_enabled', '1') !== '1') return $result;
+        if (!flock($lock, LOCK_EX | LOCK_NB)) return $result;
 
-        $pdo  = getDB();
-        $stmt = $pdo->prepare("SELECT setting_value FROM settings WHERE setting_key = 'db_backup_last_run' LIMIT 1");
-        $stmt->execute();
-        $lastRaw = $stmt->fetchColumn();
-        $last    = (int) ($lastRaw ?: 0);
-        if ($last > time() - 24 * 3600) return $result;
+        // Baca ulang setelah lock agar dua worker tidak memakai nilai lama dari cache.
+        $lastFile = getDB()->query("SELECT setting_value FROM settings WHERE setting_key = 'db_backup_last_file'")->fetchColumn();
+        $last = $lastFile && basename($lastFile) === $lastFile ? $dir . DIRECTORY_SEPARATOR . $lastFile : null;
+        if ($last !== null && is_file($last) && filemtime($last) > time() - 86400) return $result;
 
-        if ($lastRaw === false) {
-            $pdo->prepare("INSERT IGNORE INTO settings (setting_key, setting_value, setting_group) VALUES ('db_backup_last_run', '0', 'backup')")->execute();
-            $lastRaw = '0';
+        $backup = createDbBackup();
+        if (empty($backup['success'])) {
+            error_log('processDbBackups: ' . ($backup['message'] ?? 'gagal'));
+            return $result;
         }
-        $claim = $pdo->prepare("UPDATE settings SET setting_value = ? WHERE setting_key = 'db_backup_last_run' AND setting_value = ?");
-        $claim->execute([(string) time(), (string) $lastRaw]);
-        if ($claim->rowCount() < 1) return $result; // proses lain menang
-
-        $r = createDbBackup();
-        if (!empty($r['success'])) {
-            $result['created'] = 1;
-        } else {
-            error_log('processDbBackups: ' . ($r['message'] ?? 'gagal'));
+        if (!setSetting('db_backup_last_file', $backup['file'], 'backup')) {
+            error_log('processDbBackups: arsip tersimpan, penanda keberhasilan gagal dicatat.');
         }
+        $result['created'] = 1;
         $result['pruned'] = pruneDbBackups((int) (getSetting('db_backup_retention_days', '7') ?: 7));
     } catch (Throwable $e) {
         error_log('processDbBackups error: ' . $e->getMessage());
+    } finally {
+        fclose($lock);
     }
     return $result;
 }

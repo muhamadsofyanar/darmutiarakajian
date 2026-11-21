@@ -26,6 +26,28 @@ $upcomingEvents = $pastEvents = [];
 $registered = false;
 $courseUrl = null;
 $pageError = '';
+$filters = ['kind' => 'regular', 'q' => '', 'product' => '', 'status' => '', 'when' => '', 'from' => '', 'to' => ''];
+if ($admin && !$id) {
+    foreach ($filters as $key => $default) {
+        $value = $_GET[$key] ?? $default;
+        $filters[$key] = is_string($value) ? trim($value) : $default;
+    }
+    if (!in_array($filters['kind'], ['regular', 'demo', 'all'], true)) $filters['kind'] = 'regular';
+    if (!in_array($filters['status'], ['published', 'draft'], true)) $filters['status'] = '';
+    if ($filters['when'] !== 'upcoming') $filters['when'] = '';
+    if ($filters['product'] !== 'general' && (!ctype_digit($filters['product']) || (int) $filters['product'] <= 0)) {
+        $filters['product'] = '';
+    }
+    foreach (['from', 'to'] as $key) {
+        $date = preg_match('/^\d{4}-\d{2}-\d{2}$/D', $filters[$key])
+            ? DateTimeImmutable::createFromFormat('!Y-m-d', $filters[$key], $timezone)
+            : false;
+        if (!$date || $date->format('Y-m-d') !== $filters[$key] || (int) $date->format('Y') < 1000) {
+            $filters[$key] = '';
+        }
+    }
+    $filters['q'] = mb_substr($filters['q'], 0, 180);
+}
 
 function darmutiaraField(string $name): string
 {
@@ -49,7 +71,8 @@ function darmutiaraHttpsLink(string $name): ?string
 
 function darmutiaraKajianAccess(array $event, int $userId): bool
 {
-    return (bool) $event['published']
+    return !str_starts_with(strtolower($event['title']), '[demo]')
+        && (bool) $event['published']
         && ($event['product_id'] === null
             || (!empty($event['product_exists']) && hasAccess($userId, (int) $event['product_id'])));
 }
@@ -189,7 +212,41 @@ try {
         $query = 'SELECT k.id, k.title, k.speaker, k.starts_at, k.published, k.product_id,
             EXISTS(SELECT 1 FROM products WHERE id = k.product_id) AS product_exists FROM darmutiara_kajian k';
         if ($admin) {
-            $events = $pdo->query($query . ' ORDER BY starts_at DESC, id DESC')->fetchAll();
+            $where = [];
+            $params = [];
+            if ($filters['kind'] === 'demo') $where[] = "LOWER(k.title) LIKE '[demo]%'";
+            if ($filters['kind'] === 'regular') $where[] = "LOWER(k.title) NOT LIKE '[demo]%'";
+            if ($filters['q'] !== '') {
+                $where[] = '(LOCATE(?, k.title) > 0 OR LOCATE(?, k.speaker) > 0)';
+                $params[] = $filters['q'];
+                $params[] = $filters['q'];
+            }
+            if ($filters['product'] === 'general') {
+                $where[] = 'k.product_id IS NULL';
+            } elseif ($filters['product'] !== '') {
+                $where[] = 'k.product_id = ?';
+                $params[] = (int) $filters['product'];
+            }
+            if ($filters['status'] !== '') {
+                $where[] = 'k.published = ?';
+                $params[] = (int) ($filters['status'] === 'published');
+            }
+            if ($filters['when'] === 'upcoming') {
+                $where[] = 'k.starts_at >= ?';
+                $params[] = $now;
+            }
+            if ($filters['from'] !== '') {
+                $where[] = 'k.starts_at >= ?';
+                $params[] = $filters['from'] . ' 00:00:00';
+            }
+            if ($filters['to'] !== '') {
+                $where[] = 'k.starts_at <= ?';
+                $params[] = $filters['to'] . ' 23:59:59';
+            }
+            $query .= $where ? ' WHERE ' . implode(' AND ', $where) : '';
+            $stmt = $pdo->prepare($query . ' ORDER BY starts_at DESC, id DESC');
+            $stmt->execute($params);
+            $events = $stmt->fetchAll();
         } else {
             $stmt = $pdo->prepare('SELECT k.id, k.title, k.speaker, k.starts_at, k.published, k.product_id,
                 p.id IS NOT NULL AS product_exists, r.user_id IS NOT NULL AS registered

@@ -555,6 +555,11 @@ function _maybeRunAutoCron(): void
             return; // menurut penanda lokal server ini, belum jatuh tempo
         }
 
+        if ((int) getSetting('cron_last_external', '0') > time() - 600) {
+            if (function_exists('cacheSet')) cacheSet('autocron_gate', 1, 60);
+            return;
+        }
+
         $pdo = getDB();
         // Pastikan baris penanda ada (no-op bila sudah ada) — butuh UNIQUE(setting_key).
         $pdo->prepare(
@@ -593,6 +598,16 @@ function _runAutoCronTasks(): void
     // menahan tampilan halaman; lepas juga lock sesi.
     if (function_exists('fastcgi_finish_request')) @fastcgi_finish_request();
     if (function_exists('session_write_close'))    @session_write_close();
+
+    if (getenv('DARMUTIARA_CONTAINER_CRON') === '1') {
+        try {
+            $cronLock = acquireContainerCronLock();
+            if ($cronLock === null) return;
+        } catch (Throwable $e) {
+            error_log('[auto-cron] lock: ' . $e->getMessage());
+            return;
+        }
+    }
 
     // Detak jantung — indikator "cron terakhir jalan" di dashboard & system-health.
     try { if (function_exists('cronHeartbeat')) cronHeartbeat('auto-cron'); }

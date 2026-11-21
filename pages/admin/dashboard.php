@@ -487,6 +487,47 @@ $totalSteps     = count($onboardingSteps);
 $progressPct    = $totalSteps > 0 ? (int) round(($completedCount / $totalSteps) * 100) : 0;
 $isAllDone      = ($completedCount > 0 && $completedCount === $totalSteps);
 
+$operations = [];
+if (staffCan('transactions')) {
+    require_once __DIR__ . '/../../helpers/transaction-filter.php';
+    $filter = buildTransactionFilters(['status' => 'awaiting_manual', 'period' => 'lifetime']);
+    $operations[] = [
+        'label' => 'Bukti transfer menunggu verifikasi',
+        'url' => '/admin/transactions?status=awaiting_manual&period=lifetime',
+        'query' => 'SELECT COUNT(*) FROM orders o JOIN users u ON u.id = o.user_id WHERE ' . $filter['where'],
+        'params' => $filter['params'],
+    ];
+}
+if (staffCan('users')) {
+    $operations[] = [
+        'label' => 'Anggota dengan akses aktif',
+        'url' => '/admin/users?access=active',
+        'query' => "SELECT COUNT(DISTINCT user_id) FROM member_access
+            WHERE status = 'active' AND (expires_at IS NULL OR expires_at > NOW())",
+        'params' => [],
+    ];
+}
+if (staffCan('content')) {
+    $operations[] = [
+        'label' => 'Kajian mendatang yang sudah terbit',
+        'url' => '/admin/kajian?status=published&when=upcoming',
+        'query' => "SELECT COUNT(*) FROM darmutiara_kajian
+            WHERE published = 1 AND starts_at >= ? AND LOWER(title) NOT LIKE '[demo]%'",
+        'params' => [date('Y-m-d H:i:s')],
+    ];
+}
+foreach ($operations as &$operation) {
+    $operation['count'] = null;
+    try {
+        $stmt = getDB()->prepare($operation['query']);
+        $stmt->execute($operation['params']);
+        $operation['count'] = (int) $stmt->fetchColumn();
+    } catch (PDOException $e) {
+        error_log('Dashboard operasional: ' . $e->getMessage());
+    }
+}
+unset($operation);
+
 $typeBadge = function(string $type): string {
     return match ($type) {
         'class'      => 'inline-flex px-1.5 py-0.5 rounded text-xs font-medium bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400',
@@ -544,6 +585,20 @@ $typeBadge = function(string $type): string {
         <a class="dmi-cta" href="<?= e(APP_URL) ?>/admin/kajian">Kelola Kajian <span aria-hidden="true">→</span></a>
         <?php endif; ?>
       </section>
+
+      <?php if ($operations): ?>
+      <section class="mb-6" aria-labelledby="admin-operations-heading">
+        <h2 id="admin-operations-heading" class="mb-3 text-lg font-bold text-gray-900 dark:text-white">Operasional</h2>
+        <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <?php foreach ($operations as $operation): ?>
+            <a href="<?= e(APP_URL . $operation['url']) ?>" class="rounded-xl border border-gray-200 bg-white p-4 hover:border-[var(--brand-color)] dark:border-gray-800 dark:bg-gray-900">
+              <p class="text-sm font-medium text-gray-600 dark:text-gray-300"><?= e($operation['label']) ?></p>
+              <p class="mt-1 text-2xl font-bold text-gray-900 dark:text-white"><?= $operation['count'] === null ? 'Belum tersedia' : number_format($operation['count'], 0, ',', '.') ?></p>
+            </a>
+          <?php endforeach; ?>
+        </div>
+      </section>
+      <?php endif; ?>
 
       <!-- Page header -->
       <div class="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">

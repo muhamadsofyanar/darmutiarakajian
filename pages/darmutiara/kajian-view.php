@@ -41,9 +41,9 @@ require $root . 'partials/head.php';
         <?php else: ?>
 
           <?php if ($admin): ?>
-            <section class="<?= $panelClass ?>">
-              <h2 class="mb-4 text-lg font-bold"><?= $event ? 'Ubah Kajian' : 'Tambah Kajian' ?></h2>
-              <form method="post" action="<?= e($formUrl) ?>" class="space-y-4">
+            <details class="<?= $panelClass ?>" <?= $event ? 'open' : '' ?>>
+              <summary class="cursor-pointer text-lg font-bold"><?= $event ? 'Ubah Kajian' : 'Tambah Kajian' ?></summary>
+              <form method="post" action="<?= e($formUrl) ?>" class="mt-4 space-y-4">
                 <input type="hidden" name="csrf_token" value="<?= e($csrf) ?>">
                 <input type="hidden" name="intent" value="save">
                 <div class="grid gap-4 sm:grid-cols-2">
@@ -85,12 +85,60 @@ require $root . 'partials/head.php';
                   <input type="checkbox" name="published" value="1" <?= !empty($event['published']) ? 'checked' : '' ?>>
                   Terbitkan untuk anggota
                 </label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">Judul yang diawali [Demo] hanya tampil di admin.</p>
                 <button class="<?= $buttonClass ?>" type="submit">Simpan Kajian</button>
               </form>
-            </section>
+            </details>
           <?php endif; ?>
 
           <?php if (!$event): ?>
+            <?php if ($admin): ?>
+              <section class="<?= $panelClass ?>" aria-labelledby="kajian-filter">
+                <h2 id="kajian-filter" class="mb-3 text-lg font-bold">Filter Kajian</h2>
+                <form method="get" action="<?= e($listUrl) ?>" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <label class="text-sm font-medium">Cari judul atau pemateri
+                    <input class="<?= $inputClass ?>" type="search" name="q" maxlength="180" value="<?= e($filters['q']) ?>">
+                  </label>
+                  <label class="text-sm font-medium">Jenis jadwal
+                    <select class="<?= $inputClass ?>" name="kind">
+                      <?php foreach (['regular' => 'Reguler', 'demo' => 'Demo', 'all' => 'Semua jadwal'] as $value => $label): ?>
+                        <option value="<?= e($value) ?>" <?= $filters['kind'] === $value ? 'selected' : '' ?>><?= e($label) ?></option>
+                      <?php endforeach; ?>
+                    </select>
+                  </label>
+                  <label class="text-sm font-medium">Program
+                    <select class="<?= $inputClass ?>" name="product">
+                      <option value="">Semua program</option>
+                      <option value="general" <?= $filters['product'] === 'general' ? 'selected' : '' ?>>Kajian umum</option>
+                      <?php foreach ($products as $product): ?>
+                        <option value="<?= (int) $product['id'] ?>" <?= (int) $filters['product'] === (int) $product['id'] ? 'selected' : '' ?>><?= e($product['name']) ?></option>
+                      <?php endforeach; ?>
+                    </select>
+                  </label>
+                  <label class="text-sm font-medium">Status
+                    <select class="<?= $inputClass ?>" name="status">
+                      <?php foreach (['' => 'Semua status', 'published' => 'Terbit', 'draft' => 'Draf'] as $value => $label): ?>
+                        <option value="<?= e($value) ?>" <?= $filters['status'] === $value ? 'selected' : '' ?>><?= e($label) ?></option>
+                      <?php endforeach; ?>
+                    </select>
+                  </label>
+                  <label class="text-sm font-medium">Dari tanggal (WIB)
+                    <input class="<?= $inputClass ?>" type="date" name="from" value="<?= e($filters['from']) ?>">
+                  </label>
+                  <label class="text-sm font-medium">Sampai tanggal (WIB)
+                    <input class="<?= $inputClass ?>" type="date" name="to" value="<?= e($filters['to']) ?>">
+                  </label>
+                  <div class="flex flex-wrap items-center gap-4 sm:col-span-2 lg:col-span-3">
+                    <label class="inline-flex items-center gap-2 text-sm">
+                      <input type="checkbox" name="when" value="upcoming" <?= $filters['when'] === 'upcoming' ? 'checked' : '' ?>>
+                      Hanya kajian mendatang
+                    </label>
+                    <button type="submit" class="<?= $buttonClass ?>">Terapkan filter</button>
+                    <a class="<?= $linkClass ?>" href="<?= e($listUrl) ?>">Reset filter</a>
+                  </div>
+                </form>
+              </section>
+            <?php endif; ?>
             <?php
             $eventGroups = $admin
                 ? ['Daftar Kajian' => $events]
@@ -98,8 +146,8 @@ require $root . 'partials/head.php';
             ?>
             <?php foreach ($eventGroups as $groupTitle => $items): ?>
             <section class="<?= $panelClass ?>">
-              <h2 class="mb-3 text-lg font-bold"><?= e($groupTitle) ?></h2>
-              <?php if (!$items): ?><p>Belum ada kajian.</p><?php endif; ?>
+              <h2 class="mb-3 text-lg font-bold"><?= e($groupTitle) ?><?= $admin ? ' (' . count($items) . ')' : '' ?></h2>
+              <?php if (!$items): ?><p><?= $admin ? 'Tidak ada kajian yang cocok dengan filter.' : 'Belum ada kajian.' ?></p><?php endif; ?>
               <ul class="divide-y divide-gray-200 dark:divide-gray-800">
                 <?php foreach ($items as $item): ?>
                   <li class="py-3">

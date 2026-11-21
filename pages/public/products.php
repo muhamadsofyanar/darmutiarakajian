@@ -85,7 +85,7 @@ $showLanding = ($search === '' && $typeFilter === '' && $categoryFilter === '' &
 // ─── Pengaturan homepage (dapat diedit di admin Branding) ─────
 $heroBadge     = getSetting('homepage_hero_badge', 'Platform produk & kelas digital');
 $heroCta       = getSetting('homepage_hero_cta', 'Jelajahi Produk');
-$footerTagline = getSetting('footer_tagline', 'Produk & kelas digital premium. Akses instan, pembayaran aman.');
+$footerTagline = getSetting('footer_tagline', 'Produk & kelas digital premium. Akses aktif setelah pembayaran dikonfirmasi.');
 $showSpotlight = getSetting('homepage_show_spotlight', '1') === '1';
 $showNewRelease = getSetting('homepage_show_new_release', '1') === '1';
 
@@ -277,7 +277,7 @@ $brandGrad = 'background: var(--brand-color);';
 
   <div class="flex flex-wrap items-center justify-center gap-x-7 gap-y-2 mt-5 text-xs text-gray-500 dark:text-gray-400">
     <span class="inline-flex items-center gap-1.5"><svg class="w-4 h-4 text-green-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg> Pembayaran aman</span>
-    <span class="inline-flex items-center gap-1.5"><svg class="w-4 h-4 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h7l-1 8 10-12h-7z"/></svg> Akses instan</span>
+    <span class="inline-flex items-center gap-1.5"><svg class="w-4 h-4 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h7l-1 8 10-12h-7z"/></svg> Akses setelah konfirmasi</span>
     <span class="inline-flex items-center gap-1.5"><svg class="w-4 h-4 text-blue-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> Support responsif</span>
     <span class="inline-flex items-center gap-1.5"><svg class="w-4 h-4 text-[var(--brand-color)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.5 12.5 17 22l-5-3-5 3 1.5-9.5"/></svg> Garansi akses</span>
   </div>

@@ -14,6 +14,7 @@ $statusF   = $_GET['status'] ?? '';
 $sortF     = $_GET['sort']   ?? 'created_desc';
 $minSpentF = (float) ($_GET['min_spent'] ?? 0);
 $spentF    = $_GET['spent']  ?? '';               // '' | 'zero' (Rp0) | 'noorder' (tak pernah order)
+$accessF   = ($_GET['access'] ?? '') === 'active' ? 'active' : '';
 $levelF    = (int) ($_GET['level'] ?? 0);         // 0 = semua; selain itu id membership level
 $page      = max(1, (int) ($_GET['page'] ?? 1));
 $perPage   = 20;
@@ -80,6 +81,10 @@ if ($levelF > 0) {
     $params[] = $levelF;
 }
 
+if ($accessF === 'active') {
+    $where[] = "EXISTS (SELECT 1 FROM member_access ma WHERE ma.user_id = u.id
+        AND ma.status = 'active' AND (ma.expires_at IS NULL OR ma.expires_at > NOW()))";
+}
 $whereClause = implode(' AND ', $where);
 $havingClause = $minSpentF > 0 ? 'HAVING total_spent >= ?' : '';
 $havingParams = $minSpentF > 0 ? [$minSpentF] : [];
@@ -262,6 +267,10 @@ generateCSRF();
           <option value="banned"   <?= $statusF === 'banned'   ? 'selected' : '' ?>>Banned</option>
         </select>
         <?php if ($membershipLevels): ?>
+        <select name="access" aria-label="Akses produk" class="px-3 py-2 rounded-lg text-sm border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white">
+          <option value="">Semua akses produk</option>
+          <option value="active" <?= $accessF === 'active' ? 'selected' : '' ?>>Akses produk aktif</option>
+        </select>
         <select name="level" class="px-3 py-2 rounded-lg text-sm border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-[var(--brand-color)] outline-none">
           <option value="">Semua Level</option>
           <?php foreach ($membershipLevels as $lvl): ?>
@@ -270,7 +279,7 @@ generateCSRF();
         </select>
         <?php endif; ?>
         <button type="submit" class="px-4 py-2 rounded-lg text-sm font-medium bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:opacity-80 transition">Cari</button>
-        <?php if ($search || $roleF || $statusF || $sortF !== 'created_desc' || $minSpentF > 0 || $spentF || $levelF): ?>
+        <?php if ($search || $roleF || $statusF || $sortF !== 'created_desc' || $minSpentF > 0 || $spentF || $accessF || $levelF): ?>
         <a href="<?= e(APP_URL) ?>/admin/users" class="px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition">Reset</a>
         <?php endif; ?>
       </form>
@@ -308,6 +317,7 @@ generateCSRF();
         <input type="hidden" name="role"    value="<?= e($roleF) ?>">
         <input type="hidden" name="status"  value="<?= e($statusF) ?>">
         <input type="hidden" name="spent"   value="<?= e($spentF) ?>">
+        <input type="hidden" name="access" value="<?= e($accessF) ?>">
         <input type="hidden" name="level"   value="<?= (int) $levelF ?>">
       </form>
 
@@ -482,6 +492,7 @@ $roleClass = $u['role'] === 'admin'
               'sort'      => $sortF,
               'min_spent' => $minSpentF > 0 ? (int) $minSpentF : '',
               'spent'     => $spentF,
+              'access'    => $accessF,
               'level'     => $levelF > 0 ? $levelF : '',
           ]);
           $start = max(1, $page - 2);

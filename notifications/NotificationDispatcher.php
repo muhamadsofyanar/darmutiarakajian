@@ -83,12 +83,7 @@ class NotificationDispatcher {
                     // kini SATU fungsi yang juga dibaca halaman Integrasi.
                     $activeProvider = self::effectiveWaProvider($providerName);
                     if ($activeProvider === '') {
-                        error_log("NotificationDispatcher: tidak ada provider WA aktif untuk event {$eventKey}, skip.");
-                        $pdo->prepare(
-                            "INSERT INTO notification_logs
-                             (event_key, channel, provider, recipient, status, response, created_at)
-                             VALUES (?, 'whatsapp', ?, ?, 'failed', 'Tidak ada provider WhatsApp yang aktif', NOW())"
-                        )->execute([$eventKey, $providerName, $recipient]);
+                        // Jalur belum dikonfigurasi. Tidak ada pengiriman untuk dicoba ulang.
                         continue;
                     }
                     if ($activeProvider !== $providerName) {

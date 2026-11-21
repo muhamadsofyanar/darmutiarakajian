@@ -153,7 +153,7 @@ $userEmail = $_SESSION['email'] ?? '';
         <rect x="3" y="14" width="7" height="7" rx="1.5"/>
         <rect x="14" y="14" width="7" height="7" rx="1.5"/>
       </svg>
-      Dashboard
+      Dasbor
     </a>
 
     <?php if (staffCan('content')): ?>
@@ -171,7 +171,7 @@ $userEmail = $_SESSION['email'] ?? '';
         <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
         <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
       </svg>
-      Users
+      Pengguna
     </a>
 
     <!-- Products -->
@@ -181,7 +181,7 @@ $userEmail = $_SESSION['email'] ?? '';
         <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
         <line x1="12" y1="22.08" x2="12" y2="12"/>
       </svg>
-      Products
+      Produk
     </a>
 
     <!-- Canvas -->
@@ -199,7 +199,7 @@ $userEmail = $_SESSION['email'] ?? '';
         <rect x="1" y="4" width="22" height="16" rx="2"/>
         <line x1="1" y1="10" x2="23" y2="10"/>
       </svg>
-      Transactions
+      Transaksi
     </a>
 
     <!-- Tiket Support -->
@@ -207,7 +207,7 @@ $userEmail = $_SESSION['email'] ?? '';
       <svg class="<?= $iconClass('/admin/tickets') ?>" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path stroke-linecap="round" stroke-linejoin="round" d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
       </svg>
-      <span class="flex-1">Tiket Support</span>
+      <span class="flex-1">Tiket Bantuan</span>
       <?php
       $ticketOpen = 0;
       try {
@@ -226,7 +226,7 @@ $userEmail = $_SESSION['email'] ?? '';
       <svg class="<?= $iconClass('/admin/funnel-analytics') ?>" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path stroke-linecap="round" stroke-linejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V20l-4-2v-5.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/>
       </svg>
-      Funnel Analytics
+      Analitik Penjualan
     </a>
 
     <!-- Integrasi Claude — fitur premium, standalone (brand-tinted + glow tipis) -->
@@ -281,7 +281,7 @@ $userEmail = $_SESSION['email'] ?? '';
             <svg class="<?= $subIconClass('/admin/downloads') ?>" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
               <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/>
             </svg>
-            Download Manager
+            Kelola Unduhan
           </a>
           <?php endif; ?>
           <?php if (staffCan('certificates')): ?>
@@ -297,7 +297,7 @@ $userEmail = $_SESSION['email'] ?? '';
             <svg class="<?= $subIconClass('/admin/reviews') ?>" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
               <path stroke-linecap="round" stroke-linejoin="round" d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
             </svg>
-            Reviews
+            Ulasan
           </a>
           <?php endif; ?>
         </div>
@@ -353,7 +353,7 @@ $userEmail = $_SESSION['email'] ?? '';
             <svg class="<?= $subIconClass('/admin/bundles') ?>" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
               <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"/>
             </svg>
-            Bundles
+            Paket Produk
           </a>
           <?php endif; ?>
 
@@ -363,7 +363,7 @@ $userEmail = $_SESSION['email'] ?? '';
             <svg class="<?= $subIconClass('/admin/affiliate-displays') ?>" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
               <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
             </svg>
-            Display Affiliate
+            Tampilan Afiliasi
           </a>
           <?php endif; ?>
 
@@ -373,7 +373,7 @@ $userEmail = $_SESSION['email'] ?? '';
               <path stroke-linecap="round" stroke-linejoin="round" d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
               <line x1="7" y1="7" x2="7.01" y2="7"/>
             </svg>
-            Coupons
+            Kupon
           </a>
 
           <!-- Komisi & Payout (gabungan) -->
@@ -409,7 +409,7 @@ $userEmail = $_SESSION['email'] ?? '';
             <svg class="<?= $subIconClass('/admin/commission-rules') ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.75">
               <path stroke-linecap="round" stroke-linejoin="round" d="M4 21V14M4 10V3M12 21V12M12 8V3M20 21V16M20 12V3M2 14h4M10 8h4M18 16h4"/>
             </svg>
-            Commission Rules
+            Aturan Komisi
           </a>
 
           <!-- Leaderboard -->
@@ -419,7 +419,7 @@ $userEmail = $_SESSION['email'] ?? '';
               <line x1="12" y1="20" x2="12" y2="4"/>
               <line x1="6" y1="20" x2="6" y2="14"/>
             </svg>
-            Leaderboard
+            Peringkat Afiliasi
           </a>
 
           <!-- Product Bumps -->
@@ -458,7 +458,7 @@ $userEmail = $_SESSION['email'] ?? '';
               <line x1="22" y1="2" x2="11" y2="13"/>
               <polygon points="22 2 15 22 11 13 2 9 22 2"/>
             </svg>
-            Broadcast
+            Siaran
           </a>
 
           <!-- Info Member -->
@@ -474,7 +474,7 @@ $userEmail = $_SESSION['email'] ?? '';
             <svg class="<?= $subIconClass('/admin/email-sequence') ?>" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
               <rect x="3" y="5" width="18" height="14" rx="2"/><path stroke-linecap="round" stroke-linejoin="round" d="M3 7l9 6 9-6"/>
             </svg>
-            Email Sequence
+            Rangkaian Email
           </a>
           <?php endif; ?>
           <?php if (staffCan('abandoned_carts')): ?>
@@ -482,7 +482,7 @@ $userEmail = $_SESSION['email'] ?? '';
             <svg class="<?= $subIconClass('/admin/abandoned-carts') ?>" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
               <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path stroke-linecap="round" stroke-linejoin="round" d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6"/>
             </svg>
-            Abandoned Cart
+            Pesanan Terbengkalai
           </a>
           <?php endif; ?>
 
@@ -516,7 +516,7 @@ $userEmail = $_SESSION['email'] ?? '';
             <svg class="<?= $subIconClass('/admin/waitlist') ?>" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
               <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
             </svg>
-            Waitlist
+            Daftar Tunggu
           </a>
 
           <!-- Social Proof -->
@@ -563,7 +563,7 @@ $userEmail = $_SESSION['email'] ?? '';
               <path stroke-linecap="round" stroke-linejoin="round" d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
               <path stroke-linecap="round" stroke-linejoin="round" d="M13.73 21a2 2 0 0 1-3.46 0"/>
             </svg>
-            Notifications
+            Notifikasi
           </a>
 
           <!-- Membership Levels -->
@@ -572,7 +572,7 @@ $userEmail = $_SESSION['email'] ?? '';
               <circle cx="12" cy="8" r="6"/>
               <path stroke-linecap="round" stroke-linejoin="round" d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11"/>
             </svg>
-            Membership Levels
+            Tingkat Keanggotaan
           </a>
 
           <!-- Branding -->
@@ -584,7 +584,7 @@ $userEmail = $_SESSION['email'] ?? '';
               <circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/>
               <path stroke-linecap="round" stroke-linejoin="round" d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>
             </svg>
-            Branding
+            Identitas Merek
           </a>
 
           <!-- Settings -->
@@ -593,7 +593,7 @@ $userEmail = $_SESSION['email'] ?? '';
               <circle cx="12" cy="12" r="3"/>
               <path stroke-linecap="round" stroke-linejoin="round" d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
             </svg>
-            Settings
+            Pengaturan
           </a>
 
           <?php if (isAdmin()): ?>
@@ -602,7 +602,7 @@ $userEmail = $_SESSION['email'] ?? '';
             <svg class="<?= $subIconClass('/admin/staff') ?>" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
               <path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
             </svg>
-            Staff
+            Staf
           </a>
           <?php endif; ?>
 
@@ -612,7 +612,7 @@ $userEmail = $_SESSION['email'] ?? '';
               <path stroke-linecap="round" stroke-linejoin="round" d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
               <path stroke-linecap="round" stroke-linejoin="round" d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
             </svg>
-            Integrations
+            Integrasi
           </a>
 
           <!-- Hermes Agent (Ingest API) -->
@@ -689,7 +689,7 @@ $userEmail = $_SESSION['email'] ?? '';
               <rect x="2" y="3" width="20" height="18" rx="2"/>
               <path stroke-linecap="round" d="M8 3v18M16 9h2M16 13h2M16 17h2"/>
             </svg>
-            Checkout Templates
+            Templat Checkout
           </a>
 
           <!-- Tracking Pixels -->
@@ -699,7 +699,7 @@ $userEmail = $_SESSION['email'] ?? '';
               <path stroke-linecap="round" stroke-linejoin="round" d="M3 12h3M18 12h3M12 3v3M12 18v3"/>
               <path stroke-linecap="round" stroke-linejoin="round" d="M5.636 5.636l2.122 2.122M16.243 16.243l2.121 2.121M5.636 18.364l2.122-2.121M16.243 7.757l2.121-2.121"/>
             </svg>
-            Tracking Pixels
+            Piksel Pelacakan
           </a>
 
           <!-- API Keys Overview -->
@@ -707,7 +707,7 @@ $userEmail = $_SESSION['email'] ?? '';
             <svg class="<?= $subIconClass('/admin/api-keys-overview') ?>" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
               <path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 0 1 2 2m4 0a6 6 0 0 1-7.743 5.743L11 17H9v2H7v2H4a1 1 0 0 1-1-1v-2.586a1 1 0 0 1 .293-.707l5.964-5.964A6 6 0 1 1 21 9z"/>
             </svg>
-            API Keys Overview
+            Daftar Kunci API
           </a>
 
           <!-- Lisensi Produk (license key untuk produk digital yang dijual) -->
@@ -744,7 +744,7 @@ $userEmail = $_SESSION['email'] ?? '';
               <path stroke-linecap="round" d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
               <path stroke-linecap="round" d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
             </svg>
-            Backup Database
+            Cadangan Database
           </a>
 
           <!-- Import / Migrasi Data (khusus admin) -->
@@ -802,7 +802,7 @@ $userEmail = $_SESSION['email'] ?? '';
         <line x1="16" y1="13" x2="8" y2="13"/>
         <line x1="16" y1="17" x2="8" y2="17"/>
       </svg>
-      Activity Logs
+      Log Aktivitas
     </a>
 
     <!-- License (lisensi Averion itu sendiri) -->
@@ -811,7 +811,7 @@ $userEmail = $_SESSION['email'] ?? '';
         <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
         <polyline points="9 12 11 14 15 10"/>
       </svg>
-      License
+      Lisensi
     </a>
 
   </nav>

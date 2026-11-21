@@ -147,9 +147,10 @@ $upcomingKajian = [];
 $kajianTimezone = new DateTimeZone('Asia/Jakarta');
 if (!$previewMode && $ownerType === 'product') {
     try {
-        $stmt = $pdo->prepare('SELECT id, title, starts_at FROM darmutiara_kajian
+        $stmt = $pdo->prepare("SELECT id, title, starts_at FROM darmutiara_kajian
             WHERE product_id = ? AND published = 1 AND starts_at >= ?
-            ORDER BY starts_at ASC, id ASC LIMIT 5');
+              AND LOWER(title) NOT LIKE '[demo]%'
+            ORDER BY starts_at ASC, id ASC LIMIT 5");
         $stmt->execute([$productId, (new DateTimeImmutable('now', $kajianTimezone))->format('Y-m-d H:i:s')]);
         $upcomingKajian = $stmt->fetchAll();
     } catch (PDOException $error) {

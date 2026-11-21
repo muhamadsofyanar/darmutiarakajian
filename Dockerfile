@@ -1,5 +1,5 @@
 FROM php:8.2-apache
-RUN apt-get update && apt-get install -y --no-install-recommends libcurl4-openssl-dev libonig-dev libzip-dev libpng-dev libjpeg62-turbo-dev libfreetype6-dev \
+RUN apt-get update && apt-get install -y --no-install-recommends libcurl4-openssl-dev libonig-dev libzip-dev libpng-dev libjpeg62-turbo-dev libfreetype6-dev util-linux \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j"$(nproc)" pdo_mysql mysqli mbstring curl gd zip \
     && php -r 'exit(extension_loaded("sodium") ? 0 : 1);' \

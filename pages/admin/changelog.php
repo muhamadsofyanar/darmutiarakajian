@@ -7,6 +7,17 @@ $pageTitle = $topbarTitle = 'Catatan Rilis';
 // Tambahkan rilis baru di atas dan samakan versinya dengan version.php.
 $releases = [
     [
+        'version' => '1.2.270',
+        'title' => 'Operasional Darmutiara dan pengelolaan kajian',
+        'changes' => [
+            'Dasbor menampilkan antrean bukti transfer, anggota yang punya akses aktif, dan kajian mendatang.',
+            'Pengurus dapat menyaring kajian menurut jenis, program, status, dan tanggal.',
+            'Container memproses pekerjaan otomatis tanpa menunggu kunjungan halaman.',
+            'Cadangan otomatis dicatat setelah berkas selesai dan tersimpan.',
+            'WhatsApp mulai dikirim saat provider aktif, dan katalog menjelaskan kapan akses dibuka.',
+        ],
+    ],
+    [
         'version' => '1.2.269',
         'title' => 'Jadwal Kajian terhubung dengan e-course',
         'changes' => [

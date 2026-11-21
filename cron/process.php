@@ -27,6 +27,14 @@ if (!$isCli) {
     header('Content-Type: application/json');
 }
 
+if (getenv('DARMUTIARA_CONTAINER_CRON') === '1') {
+    $cronLock = acquireContainerCronLock();
+    if ($cronLock === null) {
+        echo json_encode(['status' => 'busy']);
+        exit;
+    }
+}
+
 @set_time_limit(0); // drain broadcast bisa berjalan lama; jangan kena batas eksekusi
 
 $out = ['ran_at' => date('c')];
