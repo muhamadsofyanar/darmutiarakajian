@@ -1,3 +1,3 @@
 <?php
 // Naikkan versi bersama catatan rilis saat menerbitkan update.
-define('APP_VERSION', '1.2.269');
+define('APP_VERSION', '1.2.270');

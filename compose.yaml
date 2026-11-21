@@ -1,7 +1,7 @@
 name: darmutiara-staging
 services:
   app:
-    image: ghcr.io/muhamadsofyanar/darmutiarakajian@sha256:355f4eacc3da83d4c828b0a62762791ecd8e1e42959c2ce69b9c011c4863da0f
+    image: ghcr.io/muhamadsofyanar/darmutiarakajian@sha256:4aa19af7dd1317224b91e0db805128b1e0bf1c09b2776ffd262db053f8815305
     environment:
       DARMUTIARA_APP_URL: ${DARMUTIARA_APP_URL:-}
       DARMUTIARA_ISSUER_PUBLIC_KEY: ${DARMUTIARA_ISSUER_PUBLIC_KEY:-}
