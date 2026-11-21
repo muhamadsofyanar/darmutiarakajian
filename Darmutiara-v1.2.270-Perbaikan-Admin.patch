@@ -1,0 +1,1015 @@
+From cb0c491594354727018321352ddb4d1e6fa12791 Mon Sep 17 00:00:00 2001
+From: Darmutiara Development <darmutiara-dev@users.noreply.github.com>
+Date: Sat, 21 Nov 2026 10:11:42 +0700
+Subject: [PATCH] Tingkatkan operasional admin dan kelola jadwal kajian
+ (1.2.270)
+
+---
+ Dockerfile                               |   2 +-
+ bootstrap.php                            |  15 ++++
+ cron/process.php                         |   8 ++
+ docker/entrypoint.sh                     |  12 +++
+ helpers/db-backup.php                    | 107 ++++++++++++++---------
+ helpers/system-health.php                |  21 ++++-
+ notifications/NotificationDispatcher.php |   7 +-
+ pages/admin/backups.php                  |  10 ++-
+ pages/admin/changelog.php                |  11 +++
+ pages/admin/dashboard.php                |  55 ++++++++++++
+ pages/admin/users.php                    |  13 ++-
+ pages/darmutiara/kajian-view.php         |  60 +++++++++++--
+ pages/darmutiara/kajian.php              |  61 ++++++++++++-
+ pages/public/products.php                |   4 +-
+ pages/user/class-detail.php              |   5 +-
+ partials/sidebar-admin.php               |  58 ++++++------
+ version.php                              |   2 +-
+ 17 files changed, 357 insertions(+), 94 deletions(-)
+
+diff --git a/Dockerfile b/Dockerfile
+index 2e006c3..78db293 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -1,5 +1,5 @@
+ FROM php:8.2-apache
+-RUN apt-get update && apt-get install -y --no-install-recommends libcurl4-openssl-dev libonig-dev libzip-dev libpng-dev libjpeg62-turbo-dev libfreetype6-dev \
++RUN apt-get update && apt-get install -y --no-install-recommends libcurl4-openssl-dev libonig-dev libzip-dev libpng-dev libjpeg62-turbo-dev libfreetype6-dev util-linux \
+     && docker-php-ext-configure gd --with-freetype --with-jpeg \
+     && docker-php-ext-install -j"$(nproc)" pdo_mysql mysqli mbstring curl gd zip \
+     && php -r 'exit(extension_loaded("sodium") ? 0 : 1);' \
+diff --git a/bootstrap.php b/bootstrap.php
+index d77d5ae..af95d82 100644
+--- a/bootstrap.php
++++ b/bootstrap.php
+@@ -555,6 +555,11 @@ function _maybeRunAutoCron(): void
+             return; // menurut penanda lokal server ini, belum jatuh tempo
+         }
+ 
++        if ((int) getSetting('cron_last_external', '0') > time() - 600) {
++            if (function_exists('cacheSet')) cacheSet('autocron_gate', 1, 60);
++            return;
++        }
++
+         $pdo = getDB();
+         // Pastikan baris penanda ada (no-op bila sudah ada) — butuh UNIQUE(setting_key).
+         $pdo->prepare(
+@@ -594,6 +599,16 @@ function _runAutoCronTasks(): void
+     if (function_exists('fastcgi_finish_request')) @fastcgi_finish_request();
+     if (function_exists('session_write_close'))    @session_write_close();
+ 
++    if (getenv('DARMUTIARA_CONTAINER_CRON') === '1') {
++        try {
++            $cronLock = acquireContainerCronLock();
++            if ($cronLock === null) return;
++        } catch (Throwable $e) {
++            error_log('[auto-cron] lock: ' . $e->getMessage());
++            return;
++        }
++    }
++
+     // Detak jantung — indikator "cron terakhir jalan" di dashboard & system-health.
+     try { if (function_exists('cronHeartbeat')) cronHeartbeat('auto-cron'); }
+     catch (Throwable $e) { error_log('[auto-cron] heartbeat: ' . $e->getMessage()); }
+diff --git a/cron/process.php b/cron/process.php
+index 8fb5b1f..12bbb9f 100644
+--- a/cron/process.php
++++ b/cron/process.php
+@@ -27,6 +27,14 @@ if (!$isCli) {
+     header('Content-Type: application/json');
+ }
+ 
++if (getenv('DARMUTIARA_CONTAINER_CRON') === '1') {
++    $cronLock = acquireContainerCronLock();
++    if ($cronLock === null) {
++        echo json_encode(['status' => 'busy']);
++        exit;
++    }
++}
++
+ @set_time_limit(0); // drain broadcast bisa berjalan lama; jangan kena batas eksekusi
+ 
+ $out = ['ran_at' => date('c')];
+diff --git a/docker/entrypoint.sh b/docker/entrypoint.sh
+index f8a4377..8d0bd5d 100644
+--- a/docker/entrypoint.sh
++++ b/docker/entrypoint.sh
+@@ -7,4 +7,16 @@ chown -h www-data:www-data /var/www/html/config.php /var/www/html/installer/inst
+ chown -R www-data:www-data /data /var/www/html/assets/uploads /var/www/html/storage
+ install -d -m 0700 -o www-data -g www-data /data/php-sessions
+ printf '%s\n' 'session.save_path = "/data/php-sessions"' > /usr/local/etc/php/conf.d/darmutiara-sessions.ini
++if [ "${1:-}" = apache2-foreground ]; then
++    export DARMUTIARA_CONTAINER_CRON=1
++    (
++        while :; do
++            if [ -s /data/config.php ] && [ -f /data/install.lock ]; then
++                runuser -u www-data -- /usr/local/bin/php /var/www/html/cron/process.php >/dev/null ||
++                    printf '%s\n' '[Darmutiara] Proses cron gagal.' >&2
++            fi
++            sleep 300
++        done
++    ) &
++fi
+ exec docker-php-entrypoint "$@"
+diff --git a/helpers/db-backup.php b/helpers/db-backup.php
+index 3e61053..9d78f65 100644
+--- a/helpers/db-backup.php
++++ b/helpers/db-backup.php
+@@ -2,7 +2,6 @@
+ // ─── Auto-Backup Database ──────────────────────────────────────
+ // Diekstrak dari helpers.php (pemecahan monolit — memori helpers-split-plan).
+ // Dimuat via bootstrap.php ($__averionCoreFiles, SETELAH helpers.php).
+-// Behavior-preserving: pindah utuh, tanpa ubah signature/logika.
+ // Dump pure-PHP (tanpa exec/mysqldump — aman di shared hosting), gzip,
+ // disimpan di folder backup DI LUAR webroot (konvensi UPDATE_BACKUP_PATH),
+ // fallback ke dalam aplikasi dengan .htaccess deny. Jadwal harian via Auto-Cron.
+@@ -45,15 +44,30 @@ function createDbBackup(): array
+     }
+ 
+     $file = $dir . DIRECTORY_SEPARATOR . 'averion-db-' . date('Ymd-His') . '-' . substr(bin2hex(random_bytes(4)), 0, 6) . '.sql.gz';
+-    $gz   = gzopen($file, 'wb6');
+-    if ($gz === false) {
+-        return ['success' => false, 'message' => 'Gagal membuat file backup.'];
++    $partial = tempnam($dir, '.backup-');
++    if ($partial === false || dirname($partial) !== realpath($dir)) {
++        if ($partial !== false) @unlink($partial);
++        return ['success' => false, 'message' => 'Gagal membuat file backup di folder penyimpanan.'];
+     }
++    $gz = null;
++    $snapshotOpen = false;
+ 
+     try {
++        $gz = gzopen($partial, 'wb6');
++        if ($gz === false) {
++            throw new RuntimeException('File backup tidak bisa dibuka.');
++        }
++        $write = static function (string $data) use ($gz): void {
++            if (gzwrite($gz, $data) !== strlen($data)) {
++                throw new RuntimeException('Gagal menulis file backup.');
++            }
++        };
+         $pdo = getDB();
+-        gzwrite($gz, "-- Averion Database Backup\n-- Dibuat  : " . date('Y-m-d H:i:s') . "\n-- Versi   : " . (defined('APP_VERSION') ? APP_VERSION : '-') . "\n\n");
+-        gzwrite($gz, "SET NAMES utf8mb4;\nSET FOREIGN_KEY_CHECKS=0;\n\n");
++        $pdo->exec('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
++        $pdo->beginTransaction();
++        $snapshotOpen = true;
++        $write("-- Averion Database Backup\n-- Dibuat  : " . date('Y-m-d H:i:s') . "\n-- Versi   : " . (defined('APP_VERSION') ? APP_VERSION : '-') . "\n\n");
++        $write("SET NAMES utf8mb4;\nSET FOREIGN_KEY_CHECKS=0;\n\n");
+ 
+         $tables = [];
+         foreach ($pdo->query('SHOW FULL TABLES')->fetchAll(PDO::FETCH_NUM) as $row) {
+@@ -62,12 +76,13 @@ function createDbBackup(): array
+ 
+         $rowTotal = 0;
+         foreach ($tables as $tbl) {
+-            $create = $pdo->query('SHOW CREATE TABLE `' . str_replace('`', '``', $tbl) . '`')->fetch(PDO::FETCH_NUM);
+-            gzwrite($gz, "DROP TABLE IF EXISTS `$tbl`;\n" . $create[1] . ";\n\n");
++            $table = '`' . str_replace('`', '``', $tbl) . '`';
++            $create = $pdo->query('SHOW CREATE TABLE ' . $table)->fetch(PDO::FETCH_NUM);
++            $write("DROP TABLE IF EXISTS $table;\n" . $create[1] . ";\n\n");
+ 
+             $chunk = 1000; $offset = 0;
+             while (true) {
+-                $stmt = $pdo->query('SELECT * FROM `' . str_replace('`', '``', $tbl) . "` LIMIT $chunk OFFSET $offset");
++                $stmt = $pdo->query("SELECT * FROM $table LIMIT $chunk OFFSET $offset");
+                 $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                 if (!$rows) break;
+ 
+@@ -80,16 +95,25 @@ function createDbBackup(): array
+                     $values[] = '(' . implode(',', $vals) . ')';
+                     $rowTotal++;
+                 }
+-                gzwrite($gz, "INSERT INTO `$tbl` VALUES\n" . implode(",\n", $values) . ";\n");
++                $write("INSERT INTO $table VALUES\n" . implode(",\n", $values) . ";\n");
+ 
+                 if (count($rows) < $chunk) break;
+                 $offset += $chunk;
+             }
+-            gzwrite($gz, "\n");
++            $write("\n");
+         }
+ 
+-        gzwrite($gz, "SET FOREIGN_KEY_CHECKS=1;\n");
+-        gzclose($gz);
++        $write("SET FOREIGN_KEY_CHECKS=1;\n");
++        $closed = gzclose($gz);
++        $gz = null;
++        if (!$closed) {
++            throw new RuntimeException('File backup tidak bisa ditutup dengan lengkap.');
++        }
++        $pdo->commit();
++        $snapshotOpen = false;
++        if (!rename($partial, $file)) {
++            throw new RuntimeException('File backup tidak bisa disimpan.');
++        }
+ 
+         return [
+             'success'  => true,
+@@ -101,8 +125,9 @@ function createDbBackup(): array
+             'duration' => round(microtime(true) - $t0, 2),
+         ];
+     } catch (Throwable $e) {
+-        @gzclose($gz);
+-        @unlink($file);
++        if ($snapshotOpen && $pdo->inTransaction()) $pdo->rollBack();
++        if (is_resource($gz)) gzclose($gz);
++        @unlink($partial);
+         error_log('createDbBackup error: ' . $e->getMessage());
+         return ['success' => false, 'message' => 'Backup gagal: ' . $e->getMessage()];
+     }
+@@ -134,41 +159,41 @@ function pruneDbBackups(int $days): int
+     return $n;
+ }
+ 
+-/**
+- * Backup harian otomatis (Auto-Cron / cron asli). Klaim optimistik lewat baris
+- * settings db_backup_last_run (UPDATE ... WHERE value = nilai-lama, rowCount 1
+- * = menang) → aman dijalankan paralel tanpa backup dobel.
+- */
++/** Backup harian otomatis melalui cron atau Auto-Cron. */
+ function processDbBackups(): array
+ {
+     $result = ['created' => 0, 'pruned' => 0];
++    if (getSetting('db_backup_enabled', '1') !== '1') return $result;
++
++    $dir = dbBackupDir();
++    if ($dir === null) {
++        error_log('processDbBackups: folder backup tidak bisa ditulis.');
++        return $result;
++    }
++    $lock = fopen($dir . DIRECTORY_SEPARATOR . '.auto-backup.lock', 'c');
++    if ($lock === false) return $result;
+     try {
+-        if (getSetting('db_backup_enabled', '1') !== '1') return $result;
+-
+-        $pdo  = getDB();
+-        $stmt = $pdo->prepare("SELECT setting_value FROM settings WHERE setting_key = 'db_backup_last_run' LIMIT 1");
+-        $stmt->execute();
+-        $lastRaw = $stmt->fetchColumn();
+-        $last    = (int) ($lastRaw ?: 0);
+-        if ($last > time() - 24 * 3600) return $result;
+-
+-        if ($lastRaw === false) {
+-            $pdo->prepare("INSERT IGNORE INTO settings (setting_key, setting_value, setting_group) VALUES ('db_backup_last_run', '0', 'backup')")->execute();
+-            $lastRaw = '0';
++        if (!flock($lock, LOCK_EX | LOCK_NB)) return $result;
++
++        // Baca ulang setelah lock agar dua worker tidak memakai nilai lama dari cache.
++        $lastFile = getDB()->query("SELECT setting_value FROM settings WHERE setting_key = 'db_backup_last_file'")->fetchColumn();
++        $last = $lastFile && basename($lastFile) === $lastFile ? $dir . DIRECTORY_SEPARATOR . $lastFile : null;
++        if ($last !== null && is_file($last) && filemtime($last) > time() - 86400) return $result;
++
++        $backup = createDbBackup();
++        if (empty($backup['success'])) {
++            error_log('processDbBackups: ' . ($backup['message'] ?? 'gagal'));
++            return $result;
+         }
+-        $claim = $pdo->prepare("UPDATE settings SET setting_value = ? WHERE setting_key = 'db_backup_last_run' AND setting_value = ?");
+-        $claim->execute([(string) time(), (string) $lastRaw]);
+-        if ($claim->rowCount() < 1) return $result; // proses lain menang
+-
+-        $r = createDbBackup();
+-        if (!empty($r['success'])) {
+-            $result['created'] = 1;
+-        } else {
+-            error_log('processDbBackups: ' . ($r['message'] ?? 'gagal'));
++        if (!setSetting('db_backup_last_file', $backup['file'], 'backup')) {
++            error_log('processDbBackups: arsip tersimpan, penanda keberhasilan gagal dicatat.');
+         }
++        $result['created'] = 1;
+         $result['pruned'] = pruneDbBackups((int) (getSetting('db_backup_retention_days', '7') ?: 7));
+     } catch (Throwable $e) {
+         error_log('processDbBackups error: ' . $e->getMessage());
++    } finally {
++        fclose($lock);
+     }
+     return $result;
+ }
+diff --git a/helpers/system-health.php b/helpers/system-health.php
+index 0aaa364..a6b6798 100644
+--- a/helpers/system-health.php
++++ b/helpers/system-health.php
+@@ -11,13 +11,32 @@
+ function cronHeartbeat(string $source): void
+ {
+     try {
+-        setSetting('cron_last_heartbeat', (string) time(), 'system');
++        $now = (string) time();
++        setSetting('cron_last_heartbeat', $now, 'system');
++        if ($source === 'cron') setSetting('cron_last_external', $now, 'system');
+         setSetting('cron_last_source', $source, 'system');
+     } catch (Throwable $e) {
+         error_log('cronHeartbeat error: ' . $e->getMessage());
+     }
+ }
+ 
++/**
++ * Cegah dua proses cron berjalan bersamaan dalam container.
++ * Resource ditahan selama worker berjalan dan dilepas saat proses berhenti.
++ */
++function acquireContainerCronLock()
++{
++    $lock = fopen('/data/darmutiara-cron.lock', 'c');
++    if ($lock === false) {
++        throw new RuntimeException('File lock cron tidak bisa dibuka.');
++    }
++    if (!flock($lock, LOCK_EX | LOCK_NB)) {
++        fclose($lock);
++        return null;
++    }
++    return $lock;
++}
++
+ /**
+  * Ringkasan kesehatan sistem (di-cache per request — dipakai sidebar,
+  * dashboard, dan halaman detail tanpa query ganda).
+diff --git a/notifications/NotificationDispatcher.php b/notifications/NotificationDispatcher.php
+index 3745d69..0271535 100644
+--- a/notifications/NotificationDispatcher.php
++++ b/notifications/NotificationDispatcher.php
+@@ -83,12 +83,7 @@ class NotificationDispatcher {
+                     // kini SATU fungsi yang juga dibaca halaman Integrasi.
+                     $activeProvider = self::effectiveWaProvider($providerName);
+                     if ($activeProvider === '') {
+-                        error_log("NotificationDispatcher: tidak ada provider WA aktif untuk event {$eventKey}, skip.");
+-                        $pdo->prepare(
+-                            "INSERT INTO notification_logs
+-                             (event_key, channel, provider, recipient, status, response, created_at)
+-                             VALUES (?, 'whatsapp', ?, ?, 'failed', 'Tidak ada provider WhatsApp yang aktif', NOW())"
+-                        )->execute([$eventKey, $providerName, $recipient]);
++                        // Jalur belum dikonfigurasi. Tidak ada pengiriman untuk dicoba ulang.
+                         continue;
+                     }
+                     if ($activeProvider !== $providerName) {
+diff --git a/pages/admin/backups.php b/pages/admin/backups.php
+index 4733bbe..33dff12 100644
+--- a/pages/admin/backups.php
++++ b/pages/admin/backups.php
+@@ -9,7 +9,9 @@ $backups      = listDbBackups();
+ $backupDir    = dbBackupDir();
+ $enabled      = getSetting('db_backup_enabled', '1') === '1';
+ $retention    = (int) (getSetting('db_backup_retention_days', '7') ?: 7);
+-$lastRun      = (int) (getSetting('db_backup_last_run', '0') ?: 0);
++$lastAutoFile = getSetting('db_backup_last_file', '');
++$backupTimes = array_column($backups, 'mtime', 'name');
++$lastRun = $backupTimes[$lastAutoFile] ?? null;
+ $totalSize    = array_sum(array_column($backups, 'size'));
+ $dirInWebroot = $backupDir !== null && strpos($backupDir, dirname(__DIR__, 2) . DIRECTORY_SEPARATOR) === 0;
+ 
+@@ -93,7 +95,11 @@ $csrf = generateCSRF();
+               Lokasi: <span class="font-mono"><?= e($backupDir) ?></span>
+               <?= $dirInWebroot ? ' <strong>(di dalam webroot — dilindungi .htaccess)</strong>' : ' (di luar webroot — aman dari akses browser)' ?>.
+               Total <?= count($backups) ?> file &middot; <?= e($fmtSize($totalSize)) ?>.
+-              <?php if ($lastRun > 0): ?> Backup otomatis terakhir: <?= e(date('d M Y H:i', $lastRun)) ?>.<?php endif; ?>
++              <?php if ($lastRun !== null): ?>
++                Backup otomatis terakhir berhasil: <?= e(date('d M Y H:i', $lastRun)) ?>.
++              <?php elseif ($enabled): ?>
++                Cadangan otomatis terakhir belum terverifikasi.
++              <?php endif; ?>
+               Backup di server yang sama tidak melindungi dari kehilangan server total — unduh salinannya secara berkala.
+             <?php else: ?>
+               Folder backup tidak bisa dibuat/ditulis. Periksa permission folder <span class="font-mono">backups/</span> di hosting kamu.
+diff --git a/pages/admin/changelog.php b/pages/admin/changelog.php
+index f7367d5..ce88aaf 100644
+--- a/pages/admin/changelog.php
++++ b/pages/admin/changelog.php
+@@ -6,6 +6,17 @@ $pageTitle = $topbarTitle = 'Catatan Rilis';
+ 
+ // Tambahkan rilis baru di atas dan samakan versinya dengan version.php.
+ $releases = [
++    [
++        'version' => '1.2.270',
++        'title' => 'Operasional Darmutiara dan pengelolaan kajian',
++        'changes' => [
++            'Dasbor menampilkan antrean bukti transfer, anggota yang punya akses aktif, dan kajian mendatang.',
++            'Pengurus dapat menyaring kajian menurut jenis, program, status, dan tanggal.',
++            'Container memproses pekerjaan otomatis tanpa menunggu kunjungan halaman.',
++            'Cadangan otomatis dicatat setelah berkas selesai dan tersimpan.',
++            'WhatsApp mulai dikirim saat provider aktif, dan katalog menjelaskan kapan akses dibuka.',
++        ],
++    ],
+     [
+         'version' => '1.2.269',
+         'title' => 'Jadwal Kajian terhubung dengan e-course',
+diff --git a/pages/admin/dashboard.php b/pages/admin/dashboard.php
+index b320aa0..7ac1b7e 100644
+--- a/pages/admin/dashboard.php
++++ b/pages/admin/dashboard.php
+@@ -487,6 +487,47 @@ $totalSteps     = count($onboardingSteps);
+ $progressPct    = $totalSteps > 0 ? (int) round(($completedCount / $totalSteps) * 100) : 0;
+ $isAllDone      = ($completedCount > 0 && $completedCount === $totalSteps);
+ 
++$operations = [];
++if (staffCan('transactions')) {
++    require_once __DIR__ . '/../../helpers/transaction-filter.php';
++    $filter = buildTransactionFilters(['status' => 'awaiting_manual', 'period' => 'lifetime']);
++    $operations[] = [
++        'label' => 'Bukti transfer menunggu verifikasi',
++        'url' => '/admin/transactions?status=awaiting_manual&period=lifetime',
++        'query' => 'SELECT COUNT(*) FROM orders o JOIN users u ON u.id = o.user_id WHERE ' . $filter['where'],
++        'params' => $filter['params'],
++    ];
++}
++if (staffCan('users')) {
++    $operations[] = [
++        'label' => 'Anggota dengan akses aktif',
++        'url' => '/admin/users?access=active',
++        'query' => "SELECT COUNT(DISTINCT user_id) FROM member_access
++            WHERE status = 'active' AND (expires_at IS NULL OR expires_at > NOW())",
++        'params' => [],
++    ];
++}
++if (staffCan('content')) {
++    $operations[] = [
++        'label' => 'Kajian mendatang yang sudah terbit',
++        'url' => '/admin/kajian?status=published&when=upcoming',
++        'query' => "SELECT COUNT(*) FROM darmutiara_kajian
++            WHERE published = 1 AND starts_at >= ? AND LOWER(title) NOT LIKE '[demo]%'",
++        'params' => [date('Y-m-d H:i:s')],
++    ];
++}
++foreach ($operations as &$operation) {
++    $operation['count'] = null;
++    try {
++        $stmt = getDB()->prepare($operation['query']);
++        $stmt->execute($operation['params']);
++        $operation['count'] = (int) $stmt->fetchColumn();
++    } catch (PDOException $e) {
++        error_log('Dashboard operasional: ' . $e->getMessage());
++    }
++}
++unset($operation);
++
+ $typeBadge = function(string $type): string {
+     return match ($type) {
+         'class'      => 'inline-flex px-1.5 py-0.5 rounded text-xs font-medium bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400',
+@@ -545,6 +586,20 @@ $typeBadge = function(string $type): string {
+         <?php endif; ?>
+       </section>
+ 
++      <?php if ($operations): ?>
++      <section class="mb-6" aria-labelledby="admin-operations-heading">
++        <h2 id="admin-operations-heading" class="mb-3 text-lg font-bold text-gray-900 dark:text-white">Operasional</h2>
++        <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
++          <?php foreach ($operations as $operation): ?>
++            <a href="<?= e(APP_URL . $operation['url']) ?>" class="rounded-xl border border-gray-200 bg-white p-4 hover:border-[var(--brand-color)] dark:border-gray-800 dark:bg-gray-900">
++              <p class="text-sm font-medium text-gray-600 dark:text-gray-300"><?= e($operation['label']) ?></p>
++              <p class="mt-1 text-2xl font-bold text-gray-900 dark:text-white"><?= $operation['count'] === null ? 'Belum tersedia' : number_format($operation['count'], 0, ',', '.') ?></p>
++            </a>
++          <?php endforeach; ?>
++        </div>
++      </section>
++      <?php endif; ?>
++
+       <!-- Page header -->
+       <div class="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+         <div>
+diff --git a/pages/admin/users.php b/pages/admin/users.php
+index 2f945e4..17553ce 100644
+--- a/pages/admin/users.php
++++ b/pages/admin/users.php
+@@ -14,6 +14,7 @@ $statusF   = $_GET['status'] ?? '';
+ $sortF     = $_GET['sort']   ?? 'created_desc';
+ $minSpentF = (float) ($_GET['min_spent'] ?? 0);
+ $spentF    = $_GET['spent']  ?? '';               // '' | 'zero' (Rp0) | 'noorder' (tak pernah order)
++$accessF   = ($_GET['access'] ?? '') === 'active' ? 'active' : '';
+ $levelF    = (int) ($_GET['level'] ?? 0);         // 0 = semua; selain itu id membership level
+ $page      = max(1, (int) ($_GET['page'] ?? 1));
+ $perPage   = 20;
+@@ -80,6 +81,10 @@ if ($levelF > 0) {
+     $params[] = $levelF;
+ }
+ 
++if ($accessF === 'active') {
++    $where[] = "EXISTS (SELECT 1 FROM member_access ma WHERE ma.user_id = u.id
++        AND ma.status = 'active' AND (ma.expires_at IS NULL OR ma.expires_at > NOW()))";
++}
+ $whereClause = implode(' AND ', $where);
+ $havingClause = $minSpentF > 0 ? 'HAVING total_spent >= ?' : '';
+ $havingParams = $minSpentF > 0 ? [$minSpentF] : [];
+@@ -262,6 +267,10 @@ generateCSRF();
+           <option value="banned"   <?= $statusF === 'banned'   ? 'selected' : '' ?>>Banned</option>
+         </select>
+         <?php if ($membershipLevels): ?>
++        <select name="access" aria-label="Akses produk" class="px-3 py-2 rounded-lg text-sm border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white">
++          <option value="">Semua akses produk</option>
++          <option value="active" <?= $accessF === 'active' ? 'selected' : '' ?>>Akses produk aktif</option>
++        </select>
+         <select name="level" class="px-3 py-2 rounded-lg text-sm border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-[var(--brand-color)] outline-none">
+           <option value="">Semua Level</option>
+           <?php foreach ($membershipLevels as $lvl): ?>
+@@ -270,7 +279,7 @@ generateCSRF();
+         </select>
+         <?php endif; ?>
+         <button type="submit" class="px-4 py-2 rounded-lg text-sm font-medium bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:opacity-80 transition">Cari</button>
+-        <?php if ($search || $roleF || $statusF || $sortF !== 'created_desc' || $minSpentF > 0 || $spentF || $levelF): ?>
++        <?php if ($search || $roleF || $statusF || $sortF !== 'created_desc' || $minSpentF > 0 || $spentF || $accessF || $levelF): ?>
+         <a href="<?= e(APP_URL) ?>/admin/users" class="px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition">Reset</a>
+         <?php endif; ?>
+       </form>
+@@ -308,6 +317,7 @@ generateCSRF();
+         <input type="hidden" name="role"    value="<?= e($roleF) ?>">
+         <input type="hidden" name="status"  value="<?= e($statusF) ?>">
+         <input type="hidden" name="spent"   value="<?= e($spentF) ?>">
++        <input type="hidden" name="access" value="<?= e($accessF) ?>">
+         <input type="hidden" name="level"   value="<?= (int) $levelF ?>">
+       </form>
+ 
+@@ -482,6 +492,7 @@ $roleClass = $u['role'] === 'admin'
+               'sort'      => $sortF,
+               'min_spent' => $minSpentF > 0 ? (int) $minSpentF : '',
+               'spent'     => $spentF,
++              'access'    => $accessF,
+               'level'     => $levelF > 0 ? $levelF : '',
+           ]);
+           $start = max(1, $page - 2);
+diff --git a/pages/darmutiara/kajian-view.php b/pages/darmutiara/kajian-view.php
+index 9e1c11f..1fcd892 100644
+--- a/pages/darmutiara/kajian-view.php
++++ b/pages/darmutiara/kajian-view.php
+@@ -41,9 +41,9 @@ require $root . 'partials/head.php';
+         <?php else: ?>
+ 
+           <?php if ($admin): ?>
+-            <section class="<?= $panelClass ?>">
+-              <h2 class="mb-4 text-lg font-bold"><?= $event ? 'Ubah Kajian' : 'Tambah Kajian' ?></h2>
+-              <form method="post" action="<?= e($formUrl) ?>" class="space-y-4">
++            <details class="<?= $panelClass ?>" <?= $event ? 'open' : '' ?>>
++              <summary class="cursor-pointer text-lg font-bold"><?= $event ? 'Ubah Kajian' : 'Tambah Kajian' ?></summary>
++              <form method="post" action="<?= e($formUrl) ?>" class="mt-4 space-y-4">
+                 <input type="hidden" name="csrf_token" value="<?= e($csrf) ?>">
+                 <input type="hidden" name="intent" value="save">
+                 <div class="grid gap-4 sm:grid-cols-2">
+@@ -85,12 +85,60 @@ require $root . 'partials/head.php';
+                   <input type="checkbox" name="published" value="1" <?= !empty($event['published']) ? 'checked' : '' ?>>
+                   Terbitkan untuk anggota
+                 </label>
++                <p class="text-sm text-gray-500 dark:text-gray-400">Judul yang diawali [Demo] hanya tampil di admin.</p>
+                 <button class="<?= $buttonClass ?>" type="submit">Simpan Kajian</button>
+               </form>
+-            </section>
++            </details>
+           <?php endif; ?>
+ 
+           <?php if (!$event): ?>
++            <?php if ($admin): ?>
++              <section class="<?= $panelClass ?>" aria-labelledby="kajian-filter">
++                <h2 id="kajian-filter" class="mb-3 text-lg font-bold">Filter Kajian</h2>
++                <form method="get" action="<?= e($listUrl) ?>" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
++                  <label class="text-sm font-medium">Cari judul atau pemateri
++                    <input class="<?= $inputClass ?>" type="search" name="q" maxlength="180" value="<?= e($filters['q']) ?>">
++                  </label>
++                  <label class="text-sm font-medium">Jenis jadwal
++                    <select class="<?= $inputClass ?>" name="kind">
++                      <?php foreach (['regular' => 'Reguler', 'demo' => 'Demo', 'all' => 'Semua jadwal'] as $value => $label): ?>
++                        <option value="<?= e($value) ?>" <?= $filters['kind'] === $value ? 'selected' : '' ?>><?= e($label) ?></option>
++                      <?php endforeach; ?>
++                    </select>
++                  </label>
++                  <label class="text-sm font-medium">Program
++                    <select class="<?= $inputClass ?>" name="product">
++                      <option value="">Semua program</option>
++                      <option value="general" <?= $filters['product'] === 'general' ? 'selected' : '' ?>>Kajian umum</option>
++                      <?php foreach ($products as $product): ?>
++                        <option value="<?= (int) $product['id'] ?>" <?= (int) $filters['product'] === (int) $product['id'] ? 'selected' : '' ?>><?= e($product['name']) ?></option>
++                      <?php endforeach; ?>
++                    </select>
++                  </label>
++                  <label class="text-sm font-medium">Status
++                    <select class="<?= $inputClass ?>" name="status">
++                      <?php foreach (['' => 'Semua status', 'published' => 'Terbit', 'draft' => 'Draf'] as $value => $label): ?>
++                        <option value="<?= e($value) ?>" <?= $filters['status'] === $value ? 'selected' : '' ?>><?= e($label) ?></option>
++                      <?php endforeach; ?>
++                    </select>
++                  </label>
++                  <label class="text-sm font-medium">Dari tanggal (WIB)
++                    <input class="<?= $inputClass ?>" type="date" name="from" value="<?= e($filters['from']) ?>">
++                  </label>
++                  <label class="text-sm font-medium">Sampai tanggal (WIB)
++                    <input class="<?= $inputClass ?>" type="date" name="to" value="<?= e($filters['to']) ?>">
++                  </label>
++                  <div class="flex flex-wrap items-center gap-4 sm:col-span-2 lg:col-span-3">
++                    <label class="inline-flex items-center gap-2 text-sm">
++                      <input type="checkbox" name="when" value="upcoming" <?= $filters['when'] === 'upcoming' ? 'checked' : '' ?>>
++                      Hanya kajian mendatang
++                    </label>
++                    <button type="submit" class="<?= $buttonClass ?>">Terapkan filter</button>
++                    <a class="<?= $linkClass ?>" href="<?= e($listUrl) ?>">Reset filter</a>
++                  </div>
++                </form>
++              </section>
++            <?php endif; ?>
+             <?php
+             $eventGroups = $admin
+                 ? ['Daftar Kajian' => $events]
+@@ -98,8 +146,8 @@ require $root . 'partials/head.php';
+             ?>
+             <?php foreach ($eventGroups as $groupTitle => $items): ?>
+             <section class="<?= $panelClass ?>">
+-              <h2 class="mb-3 text-lg font-bold"><?= e($groupTitle) ?></h2>
+-              <?php if (!$items): ?><p>Belum ada kajian.</p><?php endif; ?>
++              <h2 class="mb-3 text-lg font-bold"><?= e($groupTitle) ?><?= $admin ? ' (' . count($items) . ')' : '' ?></h2>
++              <?php if (!$items): ?><p><?= $admin ? 'Tidak ada kajian yang cocok dengan filter.' : 'Belum ada kajian.' ?></p><?php endif; ?>
+               <ul class="divide-y divide-gray-200 dark:divide-gray-800">
+                 <?php foreach ($items as $item): ?>
+                   <li class="py-3">
+diff --git a/pages/darmutiara/kajian.php b/pages/darmutiara/kajian.php
+index 1b7bfdc..5facff6 100644
+--- a/pages/darmutiara/kajian.php
++++ b/pages/darmutiara/kajian.php
+@@ -26,6 +26,28 @@ $upcomingEvents = $pastEvents = [];
+ $registered = false;
+ $courseUrl = null;
+ $pageError = '';
++$filters = ['kind' => 'regular', 'q' => '', 'product' => '', 'status' => '', 'when' => '', 'from' => '', 'to' => ''];
++if ($admin && !$id) {
++    foreach ($filters as $key => $default) {
++        $value = $_GET[$key] ?? $default;
++        $filters[$key] = is_string($value) ? trim($value) : $default;
++    }
++    if (!in_array($filters['kind'], ['regular', 'demo', 'all'], true)) $filters['kind'] = 'regular';
++    if (!in_array($filters['status'], ['published', 'draft'], true)) $filters['status'] = '';
++    if ($filters['when'] !== 'upcoming') $filters['when'] = '';
++    if ($filters['product'] !== 'general' && (!ctype_digit($filters['product']) || (int) $filters['product'] <= 0)) {
++        $filters['product'] = '';
++    }
++    foreach (['from', 'to'] as $key) {
++        $date = preg_match('/^\d{4}-\d{2}-\d{2}$/D', $filters[$key])
++            ? DateTimeImmutable::createFromFormat('!Y-m-d', $filters[$key], $timezone)
++            : false;
++        if (!$date || $date->format('Y-m-d') !== $filters[$key] || (int) $date->format('Y') < 1000) {
++            $filters[$key] = '';
++        }
++    }
++    $filters['q'] = mb_substr($filters['q'], 0, 180);
++}
+ 
+ function darmutiaraField(string $name): string
+ {
+@@ -49,7 +71,8 @@ function darmutiaraHttpsLink(string $name): ?string
+ 
+ function darmutiaraKajianAccess(array $event, int $userId): bool
+ {
+-    return (bool) $event['published']
++    return !str_starts_with(strtolower($event['title']), '[demo]')
++        && (bool) $event['published']
+         && ($event['product_id'] === null
+             || (!empty($event['product_exists']) && hasAccess($userId, (int) $event['product_id'])));
+ }
+@@ -189,7 +212,41 @@ try {
+         $query = 'SELECT k.id, k.title, k.speaker, k.starts_at, k.published, k.product_id,
+             EXISTS(SELECT 1 FROM products WHERE id = k.product_id) AS product_exists FROM darmutiara_kajian k';
+         if ($admin) {
+-            $events = $pdo->query($query . ' ORDER BY starts_at DESC, id DESC')->fetchAll();
++            $where = [];
++            $params = [];
++            if ($filters['kind'] === 'demo') $where[] = "LOWER(k.title) LIKE '[demo]%'";
++            if ($filters['kind'] === 'regular') $where[] = "LOWER(k.title) NOT LIKE '[demo]%'";
++            if ($filters['q'] !== '') {
++                $where[] = '(LOCATE(?, k.title) > 0 OR LOCATE(?, k.speaker) > 0)';
++                $params[] = $filters['q'];
++                $params[] = $filters['q'];
++            }
++            if ($filters['product'] === 'general') {
++                $where[] = 'k.product_id IS NULL';
++            } elseif ($filters['product'] !== '') {
++                $where[] = 'k.product_id = ?';
++                $params[] = (int) $filters['product'];
++            }
++            if ($filters['status'] !== '') {
++                $where[] = 'k.published = ?';
++                $params[] = (int) ($filters['status'] === 'published');
++            }
++            if ($filters['when'] === 'upcoming') {
++                $where[] = 'k.starts_at >= ?';
++                $params[] = $now;
++            }
++            if ($filters['from'] !== '') {
++                $where[] = 'k.starts_at >= ?';
++                $params[] = $filters['from'] . ' 00:00:00';
++            }
++            if ($filters['to'] !== '') {
++                $where[] = 'k.starts_at <= ?';
++                $params[] = $filters['to'] . ' 23:59:59';
++            }
++            $query .= $where ? ' WHERE ' . implode(' AND ', $where) : '';
++            $stmt = $pdo->prepare($query . ' ORDER BY starts_at DESC, id DESC');
++            $stmt->execute($params);
++            $events = $stmt->fetchAll();
+         } else {
+             $stmt = $pdo->prepare('SELECT k.id, k.title, k.speaker, k.starts_at, k.published, k.product_id,
+                 p.id IS NOT NULL AS product_exists, r.user_id IS NOT NULL AS registered
+diff --git a/pages/public/products.php b/pages/public/products.php
+index 1844524..c42549c 100644
+--- a/pages/public/products.php
++++ b/pages/public/products.php
+@@ -85,7 +85,7 @@ $showLanding = ($search === '' && $typeFilter === '' && $categoryFilter === '' &
+ // ─── Pengaturan homepage (dapat diedit di admin Branding) ─────
+ $heroBadge     = getSetting('homepage_hero_badge', 'Platform produk & kelas digital');
+ $heroCta       = getSetting('homepage_hero_cta', 'Jelajahi Produk');
+-$footerTagline = getSetting('footer_tagline', 'Produk & kelas digital premium. Akses instan, pembayaran aman.');
++$footerTagline = getSetting('footer_tagline', 'Produk & kelas digital premium. Akses aktif setelah pembayaran dikonfirmasi.');
+ $showSpotlight = getSetting('homepage_show_spotlight', '1') === '1';
+ $showNewRelease = getSetting('homepage_show_new_release', '1') === '1';
+ 
+@@ -277,7 +277,7 @@ $brandGrad = 'background: var(--brand-color);';
+ 
+   <div class="flex flex-wrap items-center justify-center gap-x-7 gap-y-2 mt-5 text-xs text-gray-500 dark:text-gray-400">
+     <span class="inline-flex items-center gap-1.5"><svg class="w-4 h-4 text-green-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg> Pembayaran aman</span>
+-    <span class="inline-flex items-center gap-1.5"><svg class="w-4 h-4 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h7l-1 8 10-12h-7z"/></svg> Akses instan</span>
++    <span class="inline-flex items-center gap-1.5"><svg class="w-4 h-4 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h7l-1 8 10-12h-7z"/></svg> Akses setelah konfirmasi</span>
+     <span class="inline-flex items-center gap-1.5"><svg class="w-4 h-4 text-blue-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> Support responsif</span>
+     <span class="inline-flex items-center gap-1.5"><svg class="w-4 h-4 text-[var(--brand-color)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.5 12.5 17 22l-5-3-5 3 1.5-9.5"/></svg> Garansi akses</span>
+   </div>
+diff --git a/pages/user/class-detail.php b/pages/user/class-detail.php
+index c4b1ac4..eea1d22 100644
+--- a/pages/user/class-detail.php
++++ b/pages/user/class-detail.php
+@@ -147,9 +147,10 @@ $upcomingKajian = [];
+ $kajianTimezone = new DateTimeZone('Asia/Jakarta');
+ if (!$previewMode && $ownerType === 'product') {
+     try {
+-        $stmt = $pdo->prepare('SELECT id, title, starts_at FROM darmutiara_kajian
++        $stmt = $pdo->prepare("SELECT id, title, starts_at FROM darmutiara_kajian
+             WHERE product_id = ? AND published = 1 AND starts_at >= ?
+-            ORDER BY starts_at ASC, id ASC LIMIT 5');
++              AND LOWER(title) NOT LIKE '[demo]%'
++            ORDER BY starts_at ASC, id ASC LIMIT 5");
+         $stmt->execute([$productId, (new DateTimeImmutable('now', $kajianTimezone))->format('Y-m-d H:i:s')]);
+         $upcomingKajian = $stmt->fetchAll();
+     } catch (PDOException $error) {
+diff --git a/partials/sidebar-admin.php b/partials/sidebar-admin.php
+index d504b41..8216b04 100644
+--- a/partials/sidebar-admin.php
++++ b/partials/sidebar-admin.php
+@@ -153,7 +153,7 @@ $userEmail = $_SESSION['email'] ?? '';
+         <rect x="3" y="14" width="7" height="7" rx="1.5"/>
+         <rect x="14" y="14" width="7" height="7" rx="1.5"/>
+       </svg>
+-      Dashboard
++      Dasbor
+     </a>
+ 
+     <?php if (staffCan('content')): ?>
+@@ -171,7 +171,7 @@ $userEmail = $_SESSION['email'] ?? '';
+         <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+         <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+       </svg>
+-      Users
++      Pengguna
+     </a>
+ 
+     <!-- Products -->
+@@ -181,7 +181,7 @@ $userEmail = $_SESSION['email'] ?? '';
+         <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+         <line x1="12" y1="22.08" x2="12" y2="12"/>
+       </svg>
+-      Products
++      Produk
+     </a>
+ 
+     <!-- Canvas -->
+@@ -199,7 +199,7 @@ $userEmail = $_SESSION['email'] ?? '';
+         <rect x="1" y="4" width="22" height="16" rx="2"/>
+         <line x1="1" y1="10" x2="23" y2="10"/>
+       </svg>
+-      Transactions
++      Transaksi
+     </a>
+ 
+     <!-- Tiket Support -->
+@@ -207,7 +207,7 @@ $userEmail = $_SESSION['email'] ?? '';
+       <svg class="<?= $iconClass('/admin/tickets') ?>" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+         <path stroke-linecap="round" stroke-linejoin="round" d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+       </svg>
+-      <span class="flex-1">Tiket Support</span>
++      <span class="flex-1">Tiket Bantuan</span>
+       <?php
+       $ticketOpen = 0;
+       try {
+@@ -226,7 +226,7 @@ $userEmail = $_SESSION['email'] ?? '';
+       <svg class="<?= $iconClass('/admin/funnel-analytics') ?>" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+         <path stroke-linecap="round" stroke-linejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V20l-4-2v-5.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/>
+       </svg>
+-      Funnel Analytics
++      Analitik Penjualan
+     </a>
+ 
+     <!-- Integrasi Claude — fitur premium, standalone (brand-tinted + glow tipis) -->
+@@ -281,7 +281,7 @@ $userEmail = $_SESSION['email'] ?? '';
+             <svg class="<?= $subIconClass('/admin/downloads') ?>" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+               <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/>
+             </svg>
+-            Download Manager
++            Kelola Unduhan
+           </a>
+           <?php endif; ?>
+           <?php if (staffCan('certificates')): ?>
+@@ -297,7 +297,7 @@ $userEmail = $_SESSION['email'] ?? '';
+             <svg class="<?= $subIconClass('/admin/reviews') ?>" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+               <path stroke-linecap="round" stroke-linejoin="round" d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+             </svg>
+-            Reviews
++            Ulasan
+           </a>
+           <?php endif; ?>
+         </div>
+@@ -353,7 +353,7 @@ $userEmail = $_SESSION['email'] ?? '';
+             <svg class="<?= $subIconClass('/admin/bundles') ?>" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+               <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"/>
+             </svg>
+-            Bundles
++            Paket Produk
+           </a>
+           <?php endif; ?>
+ 
+@@ -363,7 +363,7 @@ $userEmail = $_SESSION['email'] ?? '';
+             <svg class="<?= $subIconClass('/admin/affiliate-displays') ?>" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+               <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+             </svg>
+-            Display Affiliate
++            Tampilan Afiliasi
+           </a>
+           <?php endif; ?>
+ 
+@@ -373,7 +373,7 @@ $userEmail = $_SESSION['email'] ?? '';
+               <path stroke-linecap="round" stroke-linejoin="round" d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+               <line x1="7" y1="7" x2="7.01" y2="7"/>
+             </svg>
+-            Coupons
++            Kupon
+           </a>
+ 
+           <!-- Komisi & Payout (gabungan) -->
+@@ -409,7 +409,7 @@ $userEmail = $_SESSION['email'] ?? '';
+             <svg class="<?= $subIconClass('/admin/commission-rules') ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.75">
+               <path stroke-linecap="round" stroke-linejoin="round" d="M4 21V14M4 10V3M12 21V12M12 8V3M20 21V16M20 12V3M2 14h4M10 8h4M18 16h4"/>
+             </svg>
+-            Commission Rules
++            Aturan Komisi
+           </a>
+ 
+           <!-- Leaderboard -->
+@@ -419,7 +419,7 @@ $userEmail = $_SESSION['email'] ?? '';
+               <line x1="12" y1="20" x2="12" y2="4"/>
+               <line x1="6" y1="20" x2="6" y2="14"/>
+             </svg>
+-            Leaderboard
++            Peringkat Afiliasi
+           </a>
+ 
+           <!-- Product Bumps -->
+@@ -458,7 +458,7 @@ $userEmail = $_SESSION['email'] ?? '';
+               <line x1="22" y1="2" x2="11" y2="13"/>
+               <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+             </svg>
+-            Broadcast
++            Siaran
+           </a>
+ 
+           <!-- Info Member -->
+@@ -474,7 +474,7 @@ $userEmail = $_SESSION['email'] ?? '';
+             <svg class="<?= $subIconClass('/admin/email-sequence') ?>" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+               <rect x="3" y="5" width="18" height="14" rx="2"/><path stroke-linecap="round" stroke-linejoin="round" d="M3 7l9 6 9-6"/>
+             </svg>
+-            Email Sequence
++            Rangkaian Email
+           </a>
+           <?php endif; ?>
+           <?php if (staffCan('abandoned_carts')): ?>
+@@ -482,7 +482,7 @@ $userEmail = $_SESSION['email'] ?? '';
+             <svg class="<?= $subIconClass('/admin/abandoned-carts') ?>" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+               <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path stroke-linecap="round" stroke-linejoin="round" d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6"/>
+             </svg>
+-            Abandoned Cart
++            Pesanan Terbengkalai
+           </a>
+           <?php endif; ?>
+ 
+@@ -516,7 +516,7 @@ $userEmail = $_SESSION['email'] ?? '';
+             <svg class="<?= $subIconClass('/admin/waitlist') ?>" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+               <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+             </svg>
+-            Waitlist
++            Daftar Tunggu
+           </a>
+ 
+           <!-- Social Proof -->
+@@ -563,7 +563,7 @@ $userEmail = $_SESSION['email'] ?? '';
+               <path stroke-linecap="round" stroke-linejoin="round" d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+               <path stroke-linecap="round" stroke-linejoin="round" d="M13.73 21a2 2 0 0 1-3.46 0"/>
+             </svg>
+-            Notifications
++            Notifikasi
+           </a>
+ 
+           <!-- Membership Levels -->
+@@ -572,7 +572,7 @@ $userEmail = $_SESSION['email'] ?? '';
+               <circle cx="12" cy="8" r="6"/>
+               <path stroke-linecap="round" stroke-linejoin="round" d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11"/>
+             </svg>
+-            Membership Levels
++            Tingkat Keanggotaan
+           </a>
+ 
+           <!-- Branding -->
+@@ -584,7 +584,7 @@ $userEmail = $_SESSION['email'] ?? '';
+               <circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/>
+               <path stroke-linecap="round" stroke-linejoin="round" d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>
+             </svg>
+-            Branding
++            Identitas Merek
+           </a>
+ 
+           <!-- Settings -->
+@@ -593,7 +593,7 @@ $userEmail = $_SESSION['email'] ?? '';
+               <circle cx="12" cy="12" r="3"/>
+               <path stroke-linecap="round" stroke-linejoin="round" d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+             </svg>
+-            Settings
++            Pengaturan
+           </a>
+ 
+           <?php if (isAdmin()): ?>
+@@ -602,7 +602,7 @@ $userEmail = $_SESSION['email'] ?? '';
+             <svg class="<?= $subIconClass('/admin/staff') ?>" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+               <path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+             </svg>
+-            Staff
++            Staf
+           </a>
+           <?php endif; ?>
+ 
+@@ -612,7 +612,7 @@ $userEmail = $_SESSION['email'] ?? '';
+               <path stroke-linecap="round" stroke-linejoin="round" d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+               <path stroke-linecap="round" stroke-linejoin="round" d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+             </svg>
+-            Integrations
++            Integrasi
+           </a>
+ 
+           <!-- Hermes Agent (Ingest API) -->
+@@ -689,7 +689,7 @@ $userEmail = $_SESSION['email'] ?? '';
+               <rect x="2" y="3" width="20" height="18" rx="2"/>
+               <path stroke-linecap="round" d="M8 3v18M16 9h2M16 13h2M16 17h2"/>
+             </svg>
+-            Checkout Templates
++            Templat Checkout
+           </a>
+ 
+           <!-- Tracking Pixels -->
+@@ -699,7 +699,7 @@ $userEmail = $_SESSION['email'] ?? '';
+               <path stroke-linecap="round" stroke-linejoin="round" d="M3 12h3M18 12h3M12 3v3M12 18v3"/>
+               <path stroke-linecap="round" stroke-linejoin="round" d="M5.636 5.636l2.122 2.122M16.243 16.243l2.121 2.121M5.636 18.364l2.122-2.121M16.243 7.757l2.121-2.121"/>
+             </svg>
+-            Tracking Pixels
++            Piksel Pelacakan
+           </a>
+ 
+           <!-- API Keys Overview -->
+@@ -707,7 +707,7 @@ $userEmail = $_SESSION['email'] ?? '';
+             <svg class="<?= $subIconClass('/admin/api-keys-overview') ?>" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+               <path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 0 1 2 2m4 0a6 6 0 0 1-7.743 5.743L11 17H9v2H7v2H4a1 1 0 0 1-1-1v-2.586a1 1 0 0 1 .293-.707l5.964-5.964A6 6 0 1 1 21 9z"/>
+             </svg>
+-            API Keys Overview
++            Daftar Kunci API
+           </a>
+ 
+           <!-- Lisensi Produk (license key untuk produk digital yang dijual) -->
+@@ -744,7 +744,7 @@ $userEmail = $_SESSION['email'] ?? '';
+               <path stroke-linecap="round" d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+               <path stroke-linecap="round" d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+             </svg>
+-            Backup Database
++            Cadangan Database
+           </a>
+ 
+           <!-- Import / Migrasi Data (khusus admin) -->
+@@ -802,7 +802,7 @@ $userEmail = $_SESSION['email'] ?? '';
+         <line x1="16" y1="13" x2="8" y2="13"/>
+         <line x1="16" y1="17" x2="8" y2="17"/>
+       </svg>
+-      Activity Logs
++      Log Aktivitas
+     </a>
+ 
+     <!-- License (lisensi Averion itu sendiri) -->
+@@ -811,7 +811,7 @@ $userEmail = $_SESSION['email'] ?? '';
+         <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+         <polyline points="9 12 11 14 15 10"/>
+       </svg>
+-      License
++      Lisensi
+     </a>
+ 
+   </nav>
+diff --git a/version.php b/version.php
+index 5b5ea6c..a9d5bd6 100644
+--- a/version.php
++++ b/version.php
+@@ -1,3 +1,3 @@
+ <?php
+ // Naikkan versi bersama catatan rilis saat menerbitkan update.
+-define('APP_VERSION', '1.2.269');
++define('APP_VERSION', '1.2.270');
+-- 
+2.56.1
+
