@@ -7,6 +7,15 @@ $pageTitle = $topbarTitle = 'Catatan Rilis';
 // Tambahkan rilis baru di atas dan samakan versinya dengan version.php.
 $releases = [
     [
+        'version' => '1.2.269',
+        'title' => 'Jadwal Kajian terhubung dengan e-course',
+        'changes' => [
+            'Anggota bisa membuka materi e-course dari detail kajian yang terkait dengan produk kelas.',
+            'Halaman e-course menampilkan jadwal kajian berikutnya untuk program tersebut.',
+            'Jadwal anggota menampilkan kajian mendatang, riwayat, dan status pendaftaran.',
+        ],
+    ],
+    [
         'version' => '1.2.268',
         'title' => 'Pengecekan versi terbaru',
         'changes' => [

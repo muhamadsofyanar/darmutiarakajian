@@ -18,10 +18,13 @@ $userId = (int) $_SESSION['user_id'];
 $preview = !empty($_SESSION['impersonating']);
 $csrf = generateCSRF();
 $timezone = new DateTimeZone('Asia/Jakarta');
+$now = (new DateTimeImmutable('now', $timezone))->format('Y-m-d H:i:s');
 $isPost = ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST';
 $event = null;
 $events = $posts = $products = $participants = [];
+$upcomingEvents = $pastEvents = [];
 $registered = false;
+$courseUrl = null;
 $pageError = '';
 
 function darmutiaraField(string $name): string
@@ -97,6 +100,21 @@ try {
         if (!$isPost && $registered && ($_GET['calendar'] ?? '') === '1') {
             darmutiaraKajianCalendar($event, $timezone);
         }
+        if (!$isPost && $event['product_id'] !== null) {
+            $stmt = $pdo->prepare("SELECT 1 FROM products p
+                WHERE p.id = ? AND p.access_type = 'course'
+                AND EXISTS (
+                    SELECT 1 FROM classes c
+                    JOIN materials m ON m.class_id = c.id
+                    WHERE c.status = 'active' AND (c.product_id = p.id OR EXISTS (
+                        SELECT 1 FROM class_products cp WHERE cp.class_id = c.id AND cp.product_id = p.id
+                    ))
+                )");
+            $stmt->execute([$event['product_id']]);
+            if ($stmt->fetchColumn()) {
+                $courseUrl = rtrim(APP_URL, '/') . '/member/' . (int) $event['product_id'];
+            }
+        }
     }
 
     if ($isPost) {
@@ -170,9 +188,27 @@ try {
     if (!$event) {
         $query = 'SELECT k.id, k.title, k.speaker, k.starts_at, k.published, k.product_id,
             EXISTS(SELECT 1 FROM products WHERE id = k.product_id) AS product_exists FROM darmutiara_kajian k';
-        $events = $pdo->query($query . ($admin ? '' : ' WHERE published = 1') . ' ORDER BY starts_at DESC, id DESC')->fetchAll();
-        if (!$admin) {
-            $events = array_filter($events, fn (array $row): bool => darmutiaraKajianAccess($row, $userId));
+        if ($admin) {
+            $events = $pdo->query($query . ' ORDER BY starts_at DESC, id DESC')->fetchAll();
+        } else {
+            $stmt = $pdo->prepare('SELECT k.id, k.title, k.speaker, k.starts_at, k.published, k.product_id,
+                p.id IS NOT NULL AS product_exists, r.user_id IS NOT NULL AS registered
+                FROM darmutiara_kajian k
+                LEFT JOIN products p ON p.id = k.product_id
+                LEFT JOIN darmutiara_kajian_participants r ON r.kajian_id = k.id AND r.user_id = ?
+                WHERE k.published = 1 ORDER BY k.starts_at DESC, k.id DESC');
+            $stmt->execute([$userId]);
+            foreach ($stmt->fetchAll() as $row) {
+                if (!darmutiaraKajianAccess($row, $userId)) {
+                    continue;
+                }
+                if ($row['starts_at'] >= $now) {
+                    $upcomingEvents[] = $row;
+                } else {
+                    $pastEvents[] = $row;
+                }
+            }
+            $upcomingEvents = array_reverse($upcomingEvents);
         }
     }
     if ($event && ($admin || $registered)) {

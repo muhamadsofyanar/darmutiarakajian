@@ -78,6 +78,7 @@ require $root . 'partials/head.php';
                         </option>
                       <?php endforeach; ?>
                     </select>
+                    <span class="mt-1 block text-sm text-gray-600 dark:text-gray-400">Pilih produk e-course untuk menghubungkan jadwal ini dengan kelasnya.</span>
                   </label>
                 </div>
                 <label class="flex items-center gap-2">
@@ -90,20 +91,28 @@ require $root . 'partials/head.php';
           <?php endif; ?>
 
           <?php if (!$event): ?>
+            <?php
+            $eventGroups = $admin
+                ? ['Daftar Kajian' => $events]
+                : ['Kajian Mendatang' => $upcomingEvents, 'Kajian Sebelumnya' => $pastEvents];
+            ?>
+            <?php foreach ($eventGroups as $groupTitle => $items): ?>
             <section class="<?= $panelClass ?>">
-              <h2 class="mb-3 text-lg font-bold">Daftar Kajian</h2>
-              <?php if (!$events): ?><p>Belum ada kajian yang tersedia.</p><?php endif; ?>
+              <h2 class="mb-3 text-lg font-bold"><?= e($groupTitle) ?></h2>
+              <?php if (!$items): ?><p>Belum ada kajian.</p><?php endif; ?>
               <ul class="divide-y divide-gray-200 dark:divide-gray-800">
-                <?php foreach ($events as $item): ?>
+                <?php foreach ($items as $item): ?>
                   <li class="py-3">
                     <a class="<?= $linkClass ?>" href="<?= e($listUrl . '?id=' . (int) $item['id']) ?>"><?= e($item['title']) ?></a>
                     <p class="mt-1 text-sm"><?= e($item['speaker']) ?> · <?= e($formatDate($item['starts_at'])) ?>
                       <?php if ($admin): ?> · <?= $item['published'] ? 'Terbit' : 'Draf' ?><?php endif; ?>
+                      <?php if (!$admin && $item['registered']): ?> · Terdaftar<?php endif; ?>
                     </p>
                   </li>
                 <?php endforeach; ?>
               </ul>
             </section>
+            <?php endforeach; ?>
           <?php elseif ($admin): ?>
             <section class="<?= $panelClass ?>">
               <h2 class="mb-3 text-lg font-bold">Peserta (<?= count($participants) ?>)</h2>
@@ -117,6 +126,9 @@ require $root . 'partials/head.php';
               <h2 class="text-lg font-bold"><?= e($event['title']) ?></h2>
               <p><?= e($event['speaker']) ?> · <?= e($formatDate($event['starts_at'])) ?></p>
               <?php if ($event['location'] !== ''): ?><p><?= e($event['location']) ?></p><?php endif; ?>
+              <?php if ($courseUrl !== null): ?>
+                <p><a class="<?= $linkClass ?>" href="<?= e($courseUrl) ?>">Buka Materi E-course</a></p>
+              <?php endif; ?>
               <?php if ($registered): ?>
                 <p class="text-sm font-medium">Anda sudah terdaftar.</p>
                 <div class="flex flex-wrap gap-4">
